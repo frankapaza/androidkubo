@@ -1,0 +1,30 @@
+{
+  "name": "kubot-automatizaciones",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automatizacion diaria: descarga reporte banco desde CRM ContactoEficaz y lo sube a FileTransfer Mibanco",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "descarga": "node src/clientes/contactoeficaz/mibanco/rpa/descargaCrm.js",
+    "subida": "node src/clientes/contactoeficaz/mibanco/rpa/subidaMibanco.js",
+    "surgir": "node src/clientes/contactoeficaz/surgir/rpa/index.js",
+    "surgir:descarga": "node src/clientes/contactoeficaz/surgir/rpa/descargaCrm.js",
+    "web": "node web/server.js",
+    "web:seed": "node web/seed.js",
+    "postinstall": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.6",
+    "playwright": "^1.48.0"
+  }
+}

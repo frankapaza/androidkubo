@@ -1,0 +1,30 @@
+node_modules/
+.env
+.env.local
+descargas/*
+!descargas/.gitkeep
+*.log
+npm-debug.log*
+.DS_Store
+playwright-report/
+test-results/
+
+# Web panel: datos sensibles (usuarios con hashes, estado de scheduler)
+web/data/users.json
+web/data/*.json
+!web/data/.gitkeep
+
+# PM2 logs
+.pm2/
+ecosystem-local.config.js
+
+# Credenciales locales (NUNCA subir a git)
+CREDENCIALES.txt
+credenciales.txt
+*.credentials.txt
+
+# Metadata de Claude Code (no relevante para el repo)
+.claude/
+
+# n8n legacy (reemplazado por scheduler interno)
+n8n/
