@@ -13,7 +13,12 @@ router.get('/login', (req, res) => {
   if (token) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 8 * 3600 * 1000 });
+      res.cookie('token', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: true,
+        maxAge: 8 * 3600 * 1000,
+      });
       return res.redirect(payload.role === 'admin' ? '/admin' : '/dashboard');
     } catch {
       return res.redirect('/login?error=token_invalido');
