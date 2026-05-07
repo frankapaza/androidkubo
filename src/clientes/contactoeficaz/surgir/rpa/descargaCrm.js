@@ -58,15 +58,17 @@ async function descargarReporte() {
     await page.goto(config.crm.url, { waitUntil: 'domcontentloaded' });
     await page.fill('#usuario', config.crm.user);
     await page.fill('#clave', config.crm.pass);
-    await page.click('#btn_login_usr');
+    await page.click('#btn_login_usr', { timeout: 90000 });
 
     log('Login paso 2: esperando dropdown de perfil');
-    await page.waitForSelector('#perfil', { timeout: 20000 });
+    await page.waitForSelector('#perfil', { timeout: 60000 });
     await page.fill('#usuario', config.crm.user);
     await page.fill('#clave', config.crm.pass);
     await page.selectOption('#perfil', { label: config.crm.perfil });
-    await page.click('#btn_login_usr');
-    await page.waitForLoadState('domcontentloaded');
+    await page.click('#btn_login_usr', { timeout: 90000 });
+    await page
+      .waitForLoadState('domcontentloaded', { timeout: 60000 })
+      .catch(() => log('  (domcontentloaded timeout post-login, continuando)'));
     log('Login completado');
 
     log(`Navegando al reporte: ${REPORTE_URL}`);
