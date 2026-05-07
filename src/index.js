@@ -71,6 +71,7 @@ async function main() {
     estado.fase = 'subida';
     const resultado = await subirArchivo(archivo);
     estado.folderDestino = resultado.folderDestino || '';
+    estado.screenshot = resultado.screenshot || null;
     log(`=== Subida OK: ${JSON.stringify(resultado)} ===`);
 
     estado.fase = 'completado';

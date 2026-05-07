@@ -126,12 +126,14 @@ async function descargarReporte() {
       config.downloadDir,
       `surgir_descarga_success_${Date.now()}.png`
     );
+    let shotOk = null;
     try {
       await page.screenshot({ path: successShot, fullPage: true });
+      shotOk = successShot;
       log(`Screenshot descarga OK: ${successShot}`);
     } catch (_) {}
 
-    return outPath;
+    return { archivo: outPath, screenshot: shotOk };
   } catch (err) {
     const shot = path.join(config.downloadDir, `surgir_error_descarga_${Date.now()}.png`);
     try {
@@ -146,8 +148,8 @@ async function descargarReporte() {
 
 if (require.main === module) {
   descargarReporte()
-    .then((p) => {
-      process.stdout.write(`${p}\n`);
+    .then((r) => {
+      process.stdout.write(`${r.archivo}\n`);
       process.exit(0);
     })
     .catch((err) => {

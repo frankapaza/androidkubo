@@ -96,6 +96,19 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun', requireAut
   });
 });
 
+// GET /api/screenshot/:filename — sirve PNG de descargas/ con auth
+router.get('/api/screenshot/:filename', requireAuth, (req, res) => {
+  const name = req.params.filename;
+  if (!/^[A-Za-z0-9_-]+\.png$/.test(name)) {
+    return res.status(400).json({ error: 'Nombre inválido' });
+  }
+  const allowed = /^(error_|mibanco_|surgir_)/.test(name);
+  if (!allowed) return res.status(403).json({ error: 'Prefijo no permitido' });
+  const file = path.join(ROOT, 'descargas', name);
+  if (!fs.existsSync(file)) return res.status(404).json({ error: 'No existe' });
+  res.sendFile(file);
+});
+
 // GET /api/clients/:clientId/automations/:automationId/history
 router.get('/api/clients/:clientId/automations/:automationId/history', requireAuth, (req, res) => {
   const automation = getAutomation(req, res);

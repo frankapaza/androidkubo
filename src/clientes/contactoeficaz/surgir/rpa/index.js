@@ -61,11 +61,12 @@ async function main() {
     const { borrados } = limpiarScreenshotsAntiguos(config.downloadDir, 7);
     if (borrados > 0) log(`Limpieza: ${borrados} screenshot(s) >7 días borrado(s)`);
 
-    const archivo = await descargarReporte();
+    const { archivo, screenshot } = await descargarReporte();
     estado.archivo = archivo;
     estado.archivoNombre = path.basename(archivo);
     estado.bytes = fs.statSync(archivo).size;
     estado.tamaño = formatBytes(estado.bytes);
+    estado.screenshot = screenshot || null;
     log(`=== Descarga OK: ${archivo} (${estado.tamaño}) ===`);
 
     estado.fase = 'envio';

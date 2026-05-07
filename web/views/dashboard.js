@@ -2,6 +2,14 @@ function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function screenshotUrl(p) {
+  if (!p || typeof p !== 'string') return null;
+  const base = p.replace(/\\/g, '/').split('/').pop();
+  if (!base || !/\.png$/i.test(base)) return null;
+  if (!/^(error_|mibanco_|surgir_)/.test(base)) return null;
+  return '/api/screenshot/' + encodeURIComponent(base);
+}
+
 function relativeTime(ts) {
   if (!ts) return null;
   const diff = Date.now() - new Date(ts).getTime();
@@ -104,6 +112,19 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
     <div class="metrics-grid">
       ${metrics.map(m => `<div class="metric"><span class="metric-lbl">${m.l}</span><span class="metric-val">${m.v}</span></div>`).join('')}
     </div>` : ''}
+    ${(() => {
+      const url = screenshotUrl(lastRun.screenshot);
+      if (!url) return '';
+      const isErr = lastRun.status !== 'ok';
+      return `
+      <div class="shot-block">
+        <div class="shot-hdr">
+          <span class="shot-lbl">${isErr ? 'Captura del error' : 'Captura del archivo subido'}</span>
+          <a class="shot-open" href="${url}" target="_blank" rel="noopener">Abrir tamaño completo ↗</a>
+        </div>
+        <a href="${url}" target="_blank" rel="noopener"><img class="shot-img" src="${url}" alt="captura"></a>
+      </div>`;
+    })()}
     ` : `
     <div class="no-data">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="#d3d3d9"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
@@ -243,6 +264,14 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .metric-val{font-size:13px;color:#23232f;word-break:break-word}
     code{font-family:'Consolas','Menlo',monospace;font-size:12px;background:#f4f4f5;padding:1px 5px;border-radius:4px;color:#3d3d4b}
     .sm{font-size:11px}
+
+    /* ─── Screenshot block ─── */
+    .shot-block{margin-top:14px;border:1px solid #e6e6ea;border-radius:9px;background:#f9f9fb;padding:10px 12px}
+    .shot-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+    .shot-lbl{font-size:11px;font-weight:600;color:#71707b;text-transform:uppercase;letter-spacing:.4px}
+    .shot-open{font-size:11px;color:#3d3d4b;text-decoration:none;font-weight:500}
+    .shot-open:hover{text-decoration:underline}
+    .shot-img{max-width:100%;border-radius:7px;border:1px solid #e6e6ea;display:block;background:#fff}
 
     /* ─── No data ─── */
     .no-data{display:flex;flex-direction:column;align-items:center;gap:10px;padding:32px;color:#a1a1aa}
