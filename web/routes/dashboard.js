@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const clients = require('../lib/clients');
 const envLib = require('../lib/env');
 const scheduler = require('../lib/scheduler');
+const versionLib = require('../lib/version');
 const { renderDashboard } = require('../views/dashboard');
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -48,7 +49,7 @@ router.get('/dashboard', requireAuth, (req, res) => {
     lastRuns[id] = readLastRun(automation);
   }
 
-  res.send(renderDashboard(req.user, client, lastRuns));
+  res.send(renderDashboard(req.user, client, lastRuns, { version: versionLib.read() }));
 });
 
 // GET /api/clients/:clientId/automations/:automationId/status

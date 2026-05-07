@@ -5,6 +5,7 @@ const clients = require('../lib/clients');
 const users = require('../lib/users');
 const { renderAdmin } = require('../views/admin');
 const { renderDashboard } = require('../views/dashboard');
+const versionLib = require('../lib/version');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ router.get('/admin/view/:clientId', requireAdmin, (req, res) => {
       }
     } catch {}
   }
-  res.send(renderDashboard(req.user, client, lastRuns, { isAdminView: true, viewClientId: req.params.clientId }));
+  res.send(renderDashboard(req.user, client, lastRuns, { isAdminView: true, viewClientId: req.params.clientId, version: versionLib.read() }));
 });
 
 // GET /api/admin/users — lista todos los usuarios (sin passwordHash)

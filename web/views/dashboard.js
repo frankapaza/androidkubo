@@ -10,6 +10,20 @@ function screenshotUrl(p) {
   return '/api/screenshot/' + encodeURIComponent(base);
 }
 
+function formatDeploy(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const fecha = d.toLocaleDateString('es-PE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Lima',
+    });
+    const hora = d.toLocaleTimeString('es-PE', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima',
+    });
+    return `${fecha} ${hora}`;
+  } catch { return ''; }
+}
+
 function relativeTime(ts) {
   if (!ts) return null;
   const diff = Date.now() - new Date(ts).getTime();
@@ -176,6 +190,8 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
 function renderDashboard(user, client, lastRuns, opts = {}) {
   const isAdminView = opts.isAdminView || false;
   const viewClientId = opts.viewClientId || user.clientId;
+  const version = opts.version || null;
+  const deployStr = version ? formatDeploy(version.deployDate) : '';
   const cards = Object.entries(client.automations)
     .map(([id, auto]) => renderCard(viewClientId, id, auto, lastRuns[id] || null, isAdminView))
     .join('\n');
@@ -207,6 +223,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .global-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;${globalStatus==='ok'?'background:#22c55e':globalStatus==='error'?'background:#ef4444':'background:#51515d'}}
     .hdr-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
     .hdr-user{font-size:12px;color:#51515d;font-weight:500}
+    .hdr-version{font-size:11px;color:#71707b;font-weight:500;background:#171622;border:1px solid #23232f;padding:4px 9px;border-radius:6px;font-family:'Consolas','Menlo',monospace;letter-spacing:.2px;cursor:help;white-space:nowrap}
     .btn-logout{background:transparent;border:1px solid #23232f;color:#51515d;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s}
     .btn-logout:hover{border-color:#3d3d4b;color:#a1a1aa}
     .btn-back{display:inline-flex;align-items:center;gap:6px;background:#23232f;color:#a1a1aa;border:none;padding:6px 13px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;text-decoration:none;transition:all .15s}
@@ -373,6 +390,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     <div class="global-dot" title="Estado general"></div>
   </div>
   <div class="hdr-right">
+    ${version ? `<span class="hdr-version" title="Commit ${esc(version.commit)} — Deploy ${esc(deployStr)}">${esc(version.version)}${deployStr ? ` · ${esc(deployStr)}` : ''}</span>` : ''}
     ${isAdminView
       ? `<a href="/admin" class="btn-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Volver al admin</a>`
       : `<span class="hdr-user">${esc(user.username)}</span>
