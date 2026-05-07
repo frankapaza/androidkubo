@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { descargarReporte } = require('./descargaCrm');
 const { enviarReporte } = require('./enviarCorreo');
-const { log, fechaHoyDDMMYYYY } = require('../../../../shared/util');
+const { log, fechaHoyDDMMYYYY, limpiarScreenshotsAntiguos } = require('../../../../shared/util');
 const config = require('../../../../shared/config');
 
 function formatBytes(n) {
@@ -23,7 +23,7 @@ function ultimoScreenshotError() {
     if (!fs.existsSync(config.downloadDir)) return null;
     const files = fs
       .readdirSync(config.downloadDir)
-      .filter((f) => f.startsWith('error_descarga_surgir_') && f.endsWith('.png'))
+      .filter((f) => f.startsWith('surgir_error_descarga_') && f.endsWith('.png'))
       .map((f) => ({
         ruta: path.join(config.downloadDir, f),
         mtime: fs.statSync(path.join(config.downloadDir, f)).mtimeMs,
@@ -57,6 +57,9 @@ async function main() {
   try {
     estado.fase = 'descarga';
     log('=== Inicio flujo Reporte Surgir ===');
+
+    const { borrados } = limpiarScreenshotsAntiguos(config.downloadDir, 7);
+    if (borrados > 0) log(`Limpieza: ${borrados} screenshot(s) >7 días borrado(s)`);
 
     const archivo = await descargarReporte();
     estado.archivo = archivo;

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { descargarReporte } = require('./clientes/contactoeficaz/mibanco/rpa/descargaCrm');
 const { subirArchivo } = require('./clientes/contactoeficaz/mibanco/rpa/subidaMibanco');
-const { log, fechaHoyDDMMYYYY } = require('./shared/util');
+const { log, fechaHoyDDMMYYYY, limpiarScreenshotsAntiguos } = require('./shared/util');
 const config = require('./shared/config');
 
 function formatBytes(n) {
@@ -57,6 +57,9 @@ async function main() {
   try {
     estado.fase = 'descarga';
     log('=== Inicio flujo Reporte Banco ===');
+
+    const { borrados } = limpiarScreenshotsAntiguos(config.downloadDir, 7);
+    if (borrados > 0) log(`Limpieza: ${borrados} screenshot(s) >7 días borrado(s)`);
 
     const archivo = await descargarReporte();
     estado.archivo = archivo;

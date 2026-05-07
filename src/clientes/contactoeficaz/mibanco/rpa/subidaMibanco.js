@@ -26,8 +26,8 @@ async function subirArchivo(archivoPath) {
     await page.fill('#form_password', config.mibanco.pass);
     await page.click('#submit_button');
 
-    log('Esperando landing (botón uploadButton)');
-    await page.waitForSelector('#uploadButton', {
+    log('Esperando landing (botón fileUploaderButton)');
+    await page.waitForSelector('#fileUploaderButton', {
       state: 'visible',
       timeout: 30000,
     });
@@ -39,12 +39,12 @@ async function subirArchivo(archivoPath) {
     log('Login OK');
 
     log('Abriendo modal de carga');
-    const modal = page.locator('.react-file-uploader-modal');
+    const notesInput = page.locator('textarea.wizard-notes-input');
     let modalAbierto = false;
     for (let intento = 1; intento <= 3 && !modalAbierto; intento++) {
-      await page.locator('#uploadButton').click();
+      await page.locator('#fileUploaderButton').click();
       try {
-        await modal.waitFor({ state: 'visible', timeout: 5000 });
+        await notesInput.waitFor({ state: 'visible', timeout: 5000 });
         modalAbierto = true;
       } catch (_) {
         if (intento < 3) {
@@ -57,23 +57,25 @@ async function subirArchivo(archivoPath) {
       throw new Error('Modal de upload no se abrió tras 3 intentos');
     }
 
-    const folderValue = await modal
-      .locator('input.wizard-upload-folder')
-      .inputValue();
+    const folderInput = page.locator('input.wizard-upload-folder');
+    let folderValue = '';
+    for (let i = 0; i < 20; i++) {
+      folderValue = (await folderInput.inputValue()) || '';
+      if (folderValue.length > 0) break;
+      await page.waitForTimeout(100);
+    }
     log(`Carpeta destino "Cargar en": "${folderValue}"`);
 
     log(`Llenando Notas: "${config.mibanco.notas}"`);
-    await modal
-      .locator('textarea.wizard-notes-input')
-      .fill(config.mibanco.notas);
+    await notesInput.fill(config.mibanco.notas);
 
     log('Adjuntando archivo');
-    await modal
+    await page
       .locator('input.file-selector-input:not([webkitdirectory])')
       .setInputFiles(archivoPath);
 
     log('Esperando que el botón Cargar se habilite');
-    const cargarEnabled = modal.locator(
+    const cargarEnabled = page.locator(
       'button[data-testid="modal-footer-button-primary"]:not([disabled])'
     );
     await cargarEnabled.waitFor({ state: 'visible', timeout: 30000 });
@@ -93,11 +95,31 @@ async function subirArchivo(archivoPath) {
     log('Click en Cargar (subida real)');
     await cargarEnabled.click();
 
-    log('Esperando que la subida termine (botón principal cambia a "Cerrar")');
-    const cerrarBtn = modal.locator(
+    log('Esperando resultado terminal: "Cerrar" (éxito) o "Reintentar" (fallo)');
+    const cerrarBtn = page.locator(
       'button[data-testid="modal-footer-button-primary"]:has-text("Cerrar")'
     );
-    await cerrarBtn.waitFor({ state: 'visible', timeout: 180000 });
+    const reintentarBtn = page.locator(
+      'button[data-testid="modal-footer-button-primary"]:has-text("Reintentar")'
+    );
+    await Promise.race([
+      cerrarBtn.waitFor({ state: 'visible', timeout: 180000 }),
+      reintentarBtn.waitFor({ state: 'visible', timeout: 180000 }),
+    ]);
+
+    if (await reintentarBtn.isVisible()) {
+      const dupVisible = await page
+        .locator('text=/ya existe|mismo nombre/i')
+        .first()
+        .isVisible()
+        .catch(() => false);
+      const causa = dupVisible
+        ? 'archivo con el mismo nombre ya existe en la carpeta destino'
+        : 'subida rechazada por el servidor';
+      throw new Error(
+        `Subida no completó (botón "Reintentar"): ${causa}. Revisa screenshot de error.`
+      );
+    }
     log('Subida completada (✓ Success detectado)');
 
     const successShot = path.join(
@@ -111,20 +133,26 @@ async function subirArchivo(archivoPath) {
     await cerrarBtn.click();
 
     log('Esperando cierre del modal');
-    await page.waitForFunction(
-      () =>
-        document.querySelectorAll('.react-file-uploader-modal.show').length ===
-        0,
-      null,
-      { timeout: 15000 }
-    );
+    await notesInput.waitFor({ state: 'hidden', timeout: 15000 });
+
+    // Da tiempo a que el listado de archivos refresque tras la subida
+    const archivoNombre = path.basename(archivoPath);
+    try {
+      await page
+        .locator(`text="${archivoNombre}"`)
+        .first()
+        .waitFor({ state: 'visible', timeout: 10000 });
+      log(`Archivo "${archivoNombre}" visible en el listado de la carpeta`);
+    } catch (_) {
+      log(`(no se detectó el archivo en el listado, continuando)`);
+    }
 
     const postShot = path.join(
       config.downloadDir,
-      `mibanco_post_click_${Date.now()}.png`
+      `mibanco_archivo_subido_${Date.now()}.png`
     );
     await page.screenshot({ path: postShot, fullPage: true });
-    log(`Screenshot post-subida: ${postShot}`);
+    log(`Screenshot archivo subido: ${postShot}`);
     log('Subida completada (modal cerrado)');
 
     return { dryRun: false, screenshot: postShot, folderDestino: folderValue };

@@ -120,9 +120,18 @@ async function descargarReporte() {
     fs.writeFileSync(outPath, buf);
     log(`OK  ${outPath}  (${buf.length} bytes)`);
 
+    const successShot = path.join(
+      config.downloadDir,
+      `surgir_descarga_success_${Date.now()}.png`
+    );
+    try {
+      await page.screenshot({ path: successShot, fullPage: true });
+      log(`Screenshot descarga OK: ${successShot}`);
+    } catch (_) {}
+
     return outPath;
   } catch (err) {
-    const shot = path.join(config.downloadDir, `error_descarga_surgir_${Date.now()}.png`);
+    const shot = path.join(config.downloadDir, `surgir_error_descarga_${Date.now()}.png`);
     try {
       await page.screenshot({ path: shot, fullPage: true });
       log(`Screenshot de error: ${shot}`);

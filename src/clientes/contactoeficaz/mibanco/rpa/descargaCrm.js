@@ -134,6 +134,15 @@ async function descargarReporte() {
     fs.writeFileSync(outPath, buf);
     log(`OK  ${outPath}  (${buf.length} bytes)`);
 
+    const successShot = path.join(
+      config.downloadDir,
+      `mibanco_descarga_success_${Date.now()}.png`
+    );
+    try {
+      await page.screenshot({ path: successShot, fullPage: true });
+      log(`Screenshot descarga OK: ${successShot}`);
+    } catch (_) {}
+
     return outPath;
   } catch (err) {
     const shot = path.join(config.downloadDir, `error_descarga_${Date.now()}.png`);
