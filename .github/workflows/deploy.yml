@@ -1,0 +1,45 @@
+name: Deploy a producción
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH al servidor y reiniciar PM2
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Desplegar vía SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            echo ">> git fetch + reset a origin/main"
+            git fetch --prune origin main
+            git reset --hard origin/main
+            git log -1 --format='HEAD ahora: %h %s (%cI)'
+
+            echo ">> npm ci (instala deps + corre postinstall: playwright install chromium)"
+            npm ci --omit=dev
+
+            echo ">> pm2 restart kubot-web"
+            pm2 restart kubot-web --update-env || pm2 start ecosystem.config.js
+            pm2 save
+
+            echo ">> deploy completado"
+            pm2 describe kubot-web | grep -E "status|uptime|restarts" || true
