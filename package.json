@@ -10,6 +10,8 @@
     "subida": "node src/clientes/contactoeficaz/mibanco/rpa/subidaMibanco.js",
     "surgir": "node src/clientes/contactoeficaz/surgir/rpa/index.js",
     "surgir:descarga": "node src/clientes/contactoeficaz/surgir/rpa/descargaCrm.js",
+    "ingesta:wolkvox": "node src/clientes/contactoeficaz/ingesta/wolkvox.js",
+    "ingesta:ipbusiness": "node src/clientes/contactoeficaz/ingesta/ipbusiness.js",
     "web": "node web/server.js",
     "web:seed": "node web/seed.js",
     "postinstall": "playwright install chromium"
@@ -23,6 +25,7 @@
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mssql": "^11.0.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.6",
     "playwright": "^1.48.0"

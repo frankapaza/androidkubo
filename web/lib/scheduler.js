@@ -76,25 +76,31 @@ function start() {
 
   for (const [clientId, client] of Object.entries(clients)) {
     for (const [autoId, auto] of Object.entries(client.automations)) {
-      if (!auto.scheduleKey) continue;
-      const timeStr = env[auto.scheduleKey];
-      const expr = parseCron(timeStr);
-      if (!expr) continue;
+      // Soporta scheduleKeys (array) y scheduleKey (string) indistintamente
+      const keys = auto.scheduleKeys
+        ? auto.scheduleKeys
+        : auto.scheduleKey ? [auto.scheduleKey] : [];
 
-      const task = cron.schedule(expr, () => {
-        if (shouldSkipToday(autoId)) {
-          console.log(`[scheduler] ${clientId}/${autoId} omitido hoy (envío manual ya realizado)`);
-          clearSkip(autoId);
-          return;
-        }
-        runScript(clientId, autoId, auto.script);
-      }, {
-        timezone: TIMEZONE,
-        scheduled: true,
-      });
+      for (const key of keys) {
+        const timeStr = env[key];
+        const expr = parseCron(timeStr);
+        if (!expr) continue;
 
-      activeTasks.push({ task, clientId, autoId, time: timeStr });
-      console.log(`[scheduler] ${clientId}/${autoId} → ${timeStr} hora Perú (cron: ${expr})`);
+        const task = cron.schedule(expr, () => {
+          if (shouldSkipToday(autoId)) {
+            console.log(`[scheduler] ${clientId}/${autoId} omitido hoy (envío manual ya realizado)`);
+            clearSkip(autoId);
+            return;
+          }
+          runScript(clientId, autoId, auto.script);
+        }, {
+          timezone: TIMEZONE,
+          scheduled: true,
+        });
+
+        activeTasks.push({ task, clientId, autoId, time: timeStr });
+        console.log(`[scheduler] ${clientId}/${autoId} → ${timeStr} hora Perú (cron: ${expr})`);
+      }
     }
   }
 

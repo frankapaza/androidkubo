@@ -37,35 +37,31 @@ function relativeTime(ts) {
 }
 
 function statusInfo(lastRun) {
-  if (!lastRun) return { label:'Sin datos', color:'#a1a1aa', bg:'#f4f4f5', dot:'#d3d3d9', icon:'clock' };
+  if (!lastRun) return { label:'Sin datos', color:'#a1a1aa', bg:'#f4f4f5', dot:'#d3d3d9', icon:'fa-regular fa-clock' };
   return lastRun.status === 'ok'
-    ? { label:'Exitoso',   color:'#15803d', bg:'#f0fdf4', dot:'#22c55e', icon:'check' }
-    : { label:'Con error', color:'#b91c1c', bg:'#fff5f5', dot:'#ef4444', icon:'error' };
+    ? { label:'Exitoso',   color:'#15803d', bg:'#f0fdf4', dot:'#22c55e', icon:'fa-solid fa-circle-check'       }
+    : { label:'Con error', color:'#b91c1c', bg:'#fff5f5', dot:'#ef4444', icon:'fa-solid fa-circle-exclamation' };
 }
-
-const ICONS = {
-  check: '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>',
-  error: '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>',
-  clock: '<path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>',
-};
 
 function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
   const s = statusInfo(lastRun);
   const rel = lastRun ? relativeTime(lastRun.timestamp) : null;
 
   const metrics = lastRun ? [
-    lastRun.archivoNombre ? { l:'Archivo',    v:`<code>${esc(lastRun.archivoNombre)}</code>` } : null,
-    lastRun.tamaño        ? { l:'Tamaño',     v: esc(lastRun.tamaño) } : null,
-    lastRun.duracion      ? { l:'Duración',   v: esc(lastRun.duracion) } : null,
-    lastRun.correoEnviado ? { l:'Enviado a',  v: esc(lastRun.correoEnviado) } : null,
-    lastRun.folderDestino ? { l:'Destino',    v:`<code class="sm">${esc(lastRun.folderDestino)}</code>` } : null,
-    lastRun.fechaReporte  ? { l:'Reporte',    v: esc(lastRun.fechaReporte) } : null,
+    lastRun.archivoNombre    ? { l:'Archivo',    v:`<code>${esc(lastRun.archivoNombre)}</code>` } : null,
+    lastRun.tamaño           ? { l:'Tamaño',     v: esc(lastRun.tamaño) } : null,
+    lastRun.duracion         ? { l:'Duración',   v: esc(lastRun.duracion) } : null,
+    lastRun.correoEnviado    ? { l:'Enviado a',  v: esc(lastRun.correoEnviado) } : null,
+    lastRun.folderDestino    ? { l:'Destino',    v:`<code class="sm">${esc(lastRun.folderDestino)}</code>` } : null,
+    lastRun.fechaReporte     ? { l:'Reporte',    v: esc(lastRun.fechaReporte) } : null,
+    lastRun.registrosValidos != null ? { l:'Registros', v: esc(String(lastRun.registrosValidos)) + (lastRun.totalRegistros != null ? ` / ${esc(String(lastRun.totalRegistros))} total` : '') } : null,
+    lastRun.totalCampanas    ? { l:'Campañas',   v: esc(String(lastRun.totalCampanas)) } : null,
+    lastRun.totalServidores  ? { l:'Servidores', v: esc(String(lastRun.totalServidores)) } : null,
   ].filter(Boolean) : [];
 
   return `
 <section class="acard" id="card-${esc(autoId)}">
 
-  <!-- Card header -->
   <div class="acard-hdr" style="border-left:3px solid ${esc(auto.color||'#3d3d4b')}">
     <div class="acard-hdr-info">
       <h2 class="acard-title">${esc(auto.displayName)}</h2>
@@ -77,35 +73,28 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
       </div>
     </div>
     <button class="btn-send-now" id="btnSend-${esc(autoId)}" onclick="openSendNow('${esc(autoId)}','${esc(auto.displayName)}')">
-      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-      Enviar ahora
+      <i class="fa-solid fa-paper-plane"></i> Enviar ahora
     </button>
   </div>
 
-  <!-- Tabs -->
   <div class="tabs-bar">
     <button class="tab active" onclick="switchTab('${esc(autoId)}','run',this)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
-      Ejecución
+      <i class="fa-solid fa-square-check"></i> Ejecución
     </button>
     <button class="tab" onclick="switchTab('${esc(autoId)}','cfg',this)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
-      Configuración
+      <i class="fa-solid fa-gear"></i> Configuración
     </button>
     <button class="tab" onclick="switchTab('${esc(autoId)}','hist',this)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
-      Historial
+      <i class="fa-solid fa-clock-rotate-left"></i> Historial
     </button>
   </div>
 
-  <!-- Panel: Ejecución -->
   <div id="${esc(autoId)}-run" class="tab-panel">
     ${lastRun ? `
-    <!-- Status banner -->
     <div class="status-banner" style="background:${s.bg};border-color:${s.dot}20">
       <div class="status-banner-left">
         <div class="status-icon-wrap" style="background:${s.dot}20">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="${s.dot}">${ICONS[s.icon]}</svg>
+          <i class="${s.icon}" style="font-size:18px;color:${s.dot}"></i>
         </div>
         <div>
           <div class="status-banner-title" style="color:${s.color}">${s.label}</div>
@@ -117,7 +106,7 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
     ${lastRun.error ? `
     <div class="error-block">
       <div class="error-block-title">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="#b91c1c"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        <i class="fa-solid fa-circle-exclamation" style="color:#b91c1c"></i>
         Detalle del error
       </div>
       <div class="error-block-msg">${esc(lastRun.error)}</div>
@@ -141,10 +130,9 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
     })()}
     ` : `
     <div class="no-data">
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="#d3d3d9"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+      <i class="fa-regular fa-clock" style="font-size:36px;color:#d3d3d9"></i>
       <p>Sin ejecuciones registradas</p>
     </div>`}
-
     <div class="run-bar" id="running-${esc(autoId)}">
       <div class="run-bar-inner">
         <span class="spin-dark"></span>
@@ -154,7 +142,6 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
     <div id="result-${esc(autoId)}"></div>
   </div>
 
-  <!-- Panel: Historial -->
   <div id="${esc(autoId)}-hist" class="tab-panel" style="display:none">
     <div class="hist-toolbar">
       <select class="hist-select" id="histMonth-${esc(autoId)}" onchange="renderHistTable('${esc(autoId)}')">
@@ -162,24 +149,25 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
       </select>
       <span class="hist-count" id="histCount-${esc(autoId)}"></span>
     </div>
+    <div id="hist-chart-${esc(autoId)}" class="hist-chart-wrap" style="display:none"></div>
     <div id="histBody-${esc(autoId)}">
-      <div class="hist-empty"><svg width="36" height="36" viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg><p>Cargando historial...</p></div>
+      <div class="hist-empty">
+        <i class="fa-solid fa-clock-rotate-left" style="font-size:36px;color:#e6e6ea"></i>
+        <p>Cargando historial...</p>
+      </div>
     </div>
   </div>
 
-  <!-- Panel: Config -->
   <div id="${esc(autoId)}-cfg" class="tab-panel" style="display:none">
     <div class="cfg-grid" id="cfg-${esc(autoId)}">
       <div class="cfg-loading">Cargando configuración...</div>
     </div>
     <div class="cfg-actions">
       <button class="btn-save" id="btnSave-${esc(autoId)}" onclick="saveConfig('${esc(clientId)}','${esc(autoId)}')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-        Guardar cambios
+        <i class="fa-solid fa-floppy-disk"></i> Guardar cambios
       </button>
       <button class="btn-reload" onclick="loadConfig('${esc(clientId)}','${esc(autoId)}')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-        Recargar
+        <i class="fa-solid fa-arrows-rotate"></i> Recargar
       </button>
     </div>
   </div>
@@ -196,6 +184,10 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .map(([id, auto]) => renderCard(viewClientId, id, auto, lastRuns[id] || null, isAdminView))
     .join('\n');
 
+  const automationTypes = Object.fromEntries(
+    Object.entries(client.automations).map(([id, a]) => [id, a.type || 'file'])
+  );
+
   const allOk = Object.values(lastRuns).every(r => r && r.status === 'ok');
   const anyError = Object.values(lastRuns).some(r => r && r.status !== 'ok');
   const globalStatus = !Object.keys(lastRuns).length ? 'idle'
@@ -207,6 +199,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kubot — ${esc(client.displayName)}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
@@ -216,7 +209,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .hdr{background:#08070e;height:56px;display:flex;align-items:center;padding:0 24px;position:sticky;top:0;z-index:50;border-bottom:1px solid rgba(255,255,255,.05)}
     .hdr-left{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
     .logo-mark{width:32px;height:32px;background:linear-gradient(135deg,#3d3d4b,#51515d);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .logo-mark svg{width:16px;height:16px;fill:#f9f9fb}
+    .logo-mark i{font-size:14px;color:#f9f9fb}
     .logo-name{font-size:15px;font-weight:700;color:#f9f9fb;letter-spacing:-.3px}
     .bc-sep{color:#3d3d4b;font-size:16px;margin:0 2px}
     .bc-client{font-size:13px;color:#71707b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -246,7 +239,6 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .btn-send-now:hover{background:#08070e;transform:translateY(-1px);box-shadow:0 4px 10px rgba(8,7,14,.18)}
     .btn-send-now:active{transform:translateY(0)}
     .btn-send-now:disabled{background:#d3d3d9;color:#a1a1aa;cursor:not-allowed;transform:none;box-shadow:none}
-    .btn-send-now svg{width:13px;height:13px;fill:currentColor}
     .send-chk{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;background:#f9f9fb;border:1.5px solid #e6e6ea;border-radius:9px;cursor:pointer;transition:all .15s}
     .send-chk:hover{border-color:#d3d3d9;background:#f4f4f5}
     .send-chk input{margin-top:1px;cursor:pointer;width:15px;height:15px;accent-color:#171622}
@@ -339,43 +331,25 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .hst-err{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:#fff5f5;color:#b91c1c;font-size:11px;font-weight:600}
     .hst-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
     .hist-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px;color:#a1a1aa}
-    .hist-empty svg{fill:#e6e6ea}
     .hist-empty p{font-size:13px}
     .hist-err-tip{font-size:11px;color:#a1a1aa;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
     .btn-retry{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#fff5f5;color:#b91c1c;border:1px solid #fecaca;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
     .btn-retry:hover{background:#fee2e2;border-color:#fca5a5}
     .btn-retry:disabled{background:#f4f4f5;color:#a1a1aa;border-color:#e6e6ea;cursor:not-allowed}
-    .btn-retry svg{width:11px;height:11px;fill:currentColor}
     .spin-sm{display:inline-block;width:11px;height:11px;border:1.5px solid #fecaca;border-top-color:#b91c1c;border-radius:50%;animation:spin .7s linear infinite}
 
-    /* ─── Toast ─── */
-    .toast{position:fixed;bottom:28px;right:28px;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;box-shadow:0 8px 28px rgba(8,7,14,.25);display:none;align-items:center;gap:8px;max-width:320px}
-    .toast.show{display:flex;animation:slideUp .2s ease}
-    .tok-ok{background:#171622;color:#f9f9fb}
-    .tok-err{background:#ef4444;color:#fff}
+    /* ─── History chart ─── */
+    .hist-chart-wrap{border:1px solid #e6e6ea;border-radius:9px;overflow:hidden;background:#fff;padding:8px 4px;margin-bottom:14px}
 
-    /* ─── Confirm modal ─── */
-    .overlay{display:none;position:fixed;inset:0;background:rgba(8,7,14,.55);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)}
-    .overlay.open{display:flex;animation:fadeIn .15s ease}
-    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-    .modal{background:#fff;border-radius:14px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(8,7,14,.3);animation:slideUp .2s ease}
-    .modal-hdr{padding:20px 22px 0;display:flex;align-items:flex-start;justify-content:space-between}
-    .modal-hdr-info h3{font-size:15px;font-weight:600;color:#171622}
-    .modal-hdr-info p{font-size:12px;color:#71707b;margin-top:3px}
-    .btn-close{background:none;border:none;cursor:pointer;padding:2px;color:#a1a1aa;transition:color .15s;margin-left:12px;flex-shrink:0}
-    .btn-close:hover{color:#23232f}
-    .btn-close svg{width:18px;height:18px;fill:currentColor}
-    .modal-body{padding:16px 22px;display:flex;flex-direction:column;gap:12px}
-    .modal-footer{padding:0 22px 20px;display:flex;gap:8px;justify-content:flex-end}
-    .btn-cancel{display:inline-flex;align-items:center;padding:8px 14px;background:#f4f4f5;color:#51515d;border:1px solid #e6e6ea;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
-    .btn-cancel:hover{background:#e6e6ea}
-    .btn-confirm{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#171622;color:#f9f9fb;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
-    .btn-confirm:hover{background:#08070e}
-    .btn-confirm:disabled{background:#d3d3d9;cursor:not-allowed}
-    .modal-err{font-size:12px;color:#b91c1c;background:#fff5f5;border:1px solid #fecaca;padding:8px 12px;border-radius:7px;display:none}
+    /* ─── SweetAlert2 overrides ─── */
+    .swal2-popup{font-family:'Segoe UI',system-ui,-apple-system,sans-serif!important;border-radius:14px!important}
+    .swal2-title{font-size:15px!important;font-weight:600!important;color:#171622!important;padding-top:20px!important}
+    .swal2-html-container{font-size:13px!important;color:#51515d!important}
+    .swal2-cancel{background:#f4f4f5!important;color:#51515d!important;border:1px solid #e6e6ea!important}
+    .swal2-validation-message{font-size:12px!important;border-radius:7px!important}
+    .swal2-actions{gap:8px!important}
 
     @keyframes spin{to{transform:rotate(360deg)}}
-    @keyframes slideUp{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
     @media(max-width:600px){.metrics-grid{grid-template-columns:1fr 1fr}.status-banner{flex-direction:column;align-items:flex-start}}
   </style>
 </head>
@@ -383,7 +357,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
 
 <header class="hdr">
   <div class="hdr-left">
-    <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+    <div class="logo-mark"><i class="fa-solid fa-bolt"></i></div>
     <span class="logo-name">Kubot</span>
     <span class="bc-sep">/</span>
     <span class="bc-client">${esc(client.displayName)}</span>
@@ -392,7 +366,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
   <div class="hdr-right">
     ${version ? `<span class="hdr-version" title="Commit ${esc(version.commit)} — Deploy ${esc(deployStr)}">${esc(version.version)}${deployStr ? ` · ${esc(deployStr)}` : ''}</span>` : ''}
     ${isAdminView
-      ? `<a href="/admin" class="btn-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Volver al admin</a>`
+      ? `<a href="/admin" class="btn-back"><i class="fa-solid fa-arrow-left"></i> Volver al admin</a>`
       : `<span class="hdr-user">${esc(user.username)}</span>
          <form method="POST" action="/logout" style="margin:0"><button class="btn-logout" type="submit">Salir</button></form>`
     }
@@ -403,86 +377,28 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
   ${cards}
 </main>
 
-<div id="toast" class="toast"></div>
-
-<!-- Modal: Enviar ahora -->
-<div class="overlay" id="sendOverlay">
-  <div class="modal">
-    <div class="modal-hdr">
-      <div class="modal-hdr-info">
-        <h3>Enviar ahora</h3>
-        <p><strong id="sendAutoName" style="color:#171622"></strong> se ejecutará inmediatamente.</p>
-      </div>
-      <button class="btn-close" onclick="closeSendModal()"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <label class="send-chk">
-        <input type="checkbox" id="sendSkipChk">
-        <span>
-          <span class="send-chk-text">Cancelar la ejecución programada de hoy</span>
-          <span class="send-chk-hint">Si no marcas esto, el envío programado del día también se ejecutará a su horario.</span>
-        </span>
-      </label>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeSendModal()">Cancelar</button>
-      <button class="btn-confirm" id="btnConfirmSend" onclick="confirmSendNow()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-        Ejecutar ahora
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Confirmar identidad para guardar config -->
-<div class="overlay" id="saveOverlay">
-  <div class="modal">
-    <div class="modal-hdr">
-      <div class="modal-hdr-info">
-        <h3>Confirmar cambios</h3>
-        <p>Ingresa tus credenciales para guardar la configuración</p>
-      </div>
-      <button class="btn-close" onclick="closeSaveModal()"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="fld">
-        <label>Usuario</label>
-        <input type="text" id="confirmUser" autocomplete="username" placeholder="tu_usuario">
-      </div>
-      <div class="fld">
-        <label>Contraseña</label>
-        <input type="password" id="confirmPass" autocomplete="current-password" placeholder="••••••••">
-      </div>
-      <div class="modal-err" id="confirmErr">Usuario o contraseña incorrectos</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeSaveModal()">Cancelar</button>
-      <button class="btn-confirm" id="btnConfirmSave" onclick="confirmSave()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-        Guardar
-      </button>
-    </div>
-  </div>
-</div>
-
+<script src="https://cdn.jsdelivr.net/npm/apexcharts/dist/apexcharts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/notiflix@3.2.8/dist/notiflix-aio-3.2.8.min.js"></script>
 <script>
 const CID = '${esc(viewClientId)}';
 const IS_ADMIN = ${isAdminView};
+const AUTOMATION_TYPES = ${JSON.stringify(automationTypes)};
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function toast(msg, ok=true) {
-  const t = document.getElementById('toast');
-  t.className = 'toast show '+(ok?'tok-ok':'tok-err');
-  t.innerHTML = (ok
-    ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="#4ade80"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>'
-    : '<svg width="15" height="15" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>'
-  ) + esc(msg);
-  clearTimeout(t._t);
-  t._t = setTimeout(()=>{ t.className='toast'; }, 3200);
-}
+Notiflix.Notify.init({
+  position: 'right-bottom',
+  timeout: 3200,
+  borderRadius: '10px',
+  fontSize: '13px',
+  fontFamily: "'Segoe UI',system-ui,-apple-system,sans-serif",
+  width: '300px',
+  clickToClose: true,
+});
 
 const _histCache = {};
+const _apexCharts = {};
 
 function switchTab(autoId, panel, btn) {
   ['run','cfg','hist'].forEach(p => {
@@ -501,7 +417,6 @@ async function loadHistory(clientId, autoId) {
     const { history } = await r.json();
     _histCache[autoId] = history;
 
-    // Populate month filter
     const months = [...new Set(history.map(h => h.timestamp ? h.timestamp.slice(0,7) : null).filter(Boolean))];
     const sel = document.getElementById('histMonth-'+autoId);
     months.forEach(m => {
@@ -518,6 +433,51 @@ async function loadHistory(clientId, autoId) {
   }
 }
 
+function renderHistChart(autoId, rows) {
+  const el = document.getElementById('hist-chart-'+autoId);
+  if (!el) return;
+  if (rows.length === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  if (_apexCharts[autoId]) { _apexCharts[autoId].destroy(); delete _apexCharts[autoId]; }
+
+  const byDate = {};
+  rows.forEach(h => {
+    if (!h.timestamp) return;
+    const date = h.timestamp.slice(0, 10);
+    if (!byDate[date]) byDate[date] = { ok: 0, err: 0 };
+    h.status === 'ok' ? byDate[date].ok++ : byDate[date].err++;
+  });
+
+  const dates = Object.keys(byDate).sort();
+  const chart = new ApexCharts(el, {
+    series: [
+      { name: 'Exitoso', data: dates.map(d => byDate[d].ok) },
+      { name: 'Error',   data: dates.map(d => byDate[d].err) },
+    ],
+    chart: {
+      type: 'bar', height: 120, stacked: true,
+      toolbar: { show: false },
+      animations: { enabled: true, speed: 300 },
+      fontFamily: "'Segoe UI',system-ui,sans-serif",
+    },
+    colors: ['#22c55e', '#ef4444'],
+    xaxis: {
+      categories: dates,
+      labels: { style: { fontSize: '10px', colors: '#a1a1aa' } },
+      axisBorder: { show: false }, axisTicks: { show: false },
+    },
+    yaxis: { show: false },
+    legend: { show: true, position: 'top', fontSize: '11px', labels: { colors: '#71707b' } },
+    plotOptions: { bar: { columnWidth: '55%', borderRadius: 2 } },
+    dataLabels: { enabled: false },
+    grid: { borderColor: '#f4f4f5', strokeDashArray: 3, padding: { left: 4, right: 4 } },
+    tooltip: { theme: 'light', style: { fontSize: '12px' } },
+  });
+  chart.render();
+  _apexCharts[autoId] = chart;
+}
+
 function renderHistTable(autoId) {
   const history = _histCache[autoId] || [];
   const month = document.getElementById('histMonth-'+autoId).value;
@@ -525,8 +485,10 @@ function renderHistTable(autoId) {
   const countEl = document.getElementById('histCount-'+autoId);
   countEl.textContent = rows.length + ' ejecuci' + (rows.length === 1 ? 'ón' : 'ones');
 
+  renderHistChart(autoId, rows);
+
   if (!rows.length) {
-    document.getElementById('histBody-'+autoId).innerHTML = '<div class="hist-empty"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg><p>Sin ejecuciones para este período</p></div>';
+    document.getElementById('histBody-'+autoId).innerHTML = '<div class="hist-empty"><i class="fa-solid fa-clock-rotate-left" style="font-size:32px;color:#e6e6ea"></i><p>Sin ejecuciones para este período</p></div>';
     return;
   }
 
@@ -537,28 +499,66 @@ function renderHistTable(autoId) {
            d.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
   };
 
-  document.getElementById('histBody-'+autoId).innerHTML = \`<table class="hist-table">
-    <thead><tr>
-      <th>Fecha</th><th>Estado</th><th>Archivo</th><th>Tamaño</th><th>Duración</th><th>Detalle</th><th>Acción</th>
-    </tr></thead>
-    <tbody>\${rows.map(h => \`
-      <tr>
-        <td style="white-space:nowrap;color:#51515d">\${fmt(h.timestamp)}</td>
-        <td>\${h.status==='ok'
-          ? '<span class="hst-ok"><span class="hst-dot" style="background:#22c55e"></span>OK</span>'
-          : '<span class="hst-err"><span class="hst-dot" style="background:#ef4444"></span>Error</span>'}</td>
-        <td style="font-family:monospace;font-size:11px;color:#51515d">\${esc(h.archivoNombre||'—')}</td>
-        <td style="white-space:nowrap">\${esc(h.tamaño||'—')}</td>
-        <td style="white-space:nowrap">\${esc(h.duracion||'—')}</td>
-        <td>\${h.error ? \`<span class="hist-err-tip" title="\${esc(h.error)}">\${esc(h.error)}</span>\` : (h.correoEnviado ? '<span style="font-size:11px;color:#a1a1aa">Correo enviado</span>' : (h.folderDestino ? '<span style="font-size:11px;color:#a1a1aa">Subido</span>' : '—'))}</td>
-        <td>\${h.status !== 'ok' ? \`<button class="btn-retry" onclick="resendFailed('\${esc(autoId)}', this)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>Reenviar</button>\` : '<span style="font-size:11px;color:#d3d3d9">—</span>'}</td>
-      </tr>\`).join('')}
-    </tbody>
-  </table>\`;
+  const isIngesta = AUTOMATION_TYPES[autoId] === 'ingesta';
+
+  if (isIngesta) {
+    document.getElementById('histBody-'+autoId).innerHTML = \`<table class="hist-table">
+      <thead><tr>
+        <th>Fecha ejecución</th><th>Estado</th><th>F. procesada</th><th>Registros</th><th>Duración</th><th>Detalle</th><th>Acción</th>
+      </tr></thead>
+      <tbody>\${rows.map(h => \`
+        <tr>
+          <td style="white-space:nowrap;color:#51515d">\${fmt(h.timestamp)}</td>
+          <td>\${h.status==='ok'
+            ? '<span class="hst-ok"><span class="hst-dot" style="background:#22c55e"></span>OK</span>'
+            : '<span class="hst-err"><span class="hst-dot" style="background:#ef4444"></span>Error</span>'}</td>
+          <td style="white-space:nowrap;font-size:12px;color:#51515d">\${esc(h.fechaReporte||'—')}</td>
+          <td style="white-space:nowrap;font-size:12px">
+            \${h.registrosValidos != null
+              ? \`<span style="font-weight:600;color:#171622">\${esc(String(h.registrosValidos))}</span>\${h.totalRegistros != null ? \` <span style="color:#a1a1aa;font-size:11px">/ \${esc(String(h.totalRegistros))}</span>\` : ''}\`
+              : '—'}
+          </td>
+          <td style="white-space:nowrap">\${esc(h.duracion||'—')}</td>
+          <td>\${h.error ? \`<span class="hist-err-tip" title="\${esc(h.error)}">\${esc(h.error)}</span>\`
+            : (h.fase === 'completado' ? '<span style="font-size:11px;color:#a1a1aa">Completado</span>' : '—')}</td>
+          <td>\${h.status !== 'ok' ? \`<button class="btn-retry" onclick="resendFailed('\${esc(autoId)}', this)"><i class="fa-solid fa-rotate-right"></i> Reintentar</button>\` : '<span style="font-size:11px;color:#d3d3d9">—</span>'}</td>
+        </tr>\`).join('')}
+      </tbody>
+    </table>\`;
+  } else {
+    document.getElementById('histBody-'+autoId).innerHTML = \`<table class="hist-table">
+      <thead><tr>
+        <th>Fecha</th><th>Estado</th><th>Archivo</th><th>Tamaño</th><th>Duración</th><th>Detalle</th><th>Acción</th>
+      </tr></thead>
+      <tbody>\${rows.map(h => \`
+        <tr>
+          <td style="white-space:nowrap;color:#51515d">\${fmt(h.timestamp)}</td>
+          <td>\${h.status==='ok'
+            ? '<span class="hst-ok"><span class="hst-dot" style="background:#22c55e"></span>OK</span>'
+            : '<span class="hst-err"><span class="hst-dot" style="background:#ef4444"></span>Error</span>'}</td>
+          <td style="font-family:monospace;font-size:11px;color:#51515d">\${esc(h.archivoNombre||'—')}</td>
+          <td style="white-space:nowrap">\${esc(h.tamaño||'—')}</td>
+          <td style="white-space:nowrap">\${esc(h.duracion||'—')}</td>
+          <td>\${h.error ? \`<span class="hist-err-tip" title="\${esc(h.error)}">\${esc(h.error)}</span>\` : (h.correoEnviado ? '<span style="font-size:11px;color:#a1a1aa">Correo enviado</span>' : (h.folderDestino ? '<span style="font-size:11px;color:#a1a1aa">Subido</span>' : '—'))}</td>
+          <td>\${h.status !== 'ok' ? \`<button class="btn-retry" onclick="resendFailed('\${esc(autoId)}', this)"><i class="fa-solid fa-rotate-right"></i> Reenviar</button>\` : '<span style="font-size:11px;color:#d3d3d9">—</span>'}</td>
+        </tr>\`).join('')}
+      </tbody>
+    </table>\`;
+  }
 }
 
 async function resendFailed(autoId, btn) {
-  if (!confirm('¿Reintentar la automatización ahora?\\n\\nSe descargará y procesará el reporte del día de hoy.')) return;
+  const { isConfirmed } = await Swal.fire({
+    title: '¿Reintentar ahora?',
+    text: 'Se ejecutará la automatización de inmediato.',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, reintentar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#171622',
+    reverseButtons: true,
+  });
+  if (!isConfirmed) return;
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spin-sm"></span> Reintentando...';
@@ -566,44 +566,39 @@ async function resendFailed(autoId, btn) {
     const r = await fetch('/api/clients/'+CID+'/automations/'+autoId+'/rerun', { method: 'POST' });
     const d = await r.json();
     if (d.summary?.status === 'ok') {
-      toast('✓ Reintento exitoso');
+      Notiflix.Notify.success('Reintento exitoso');
     } else {
       const err = d.summary?.error || d.error || 'Error desconocido';
-      toast('Falló: ' + err, false);
+      Notiflix.Notify.failure('Falló: ' + err);
     }
     delete _histCache[autoId];
     await loadHistory(CID, autoId);
   } catch {
-    toast('Error de conexión', false);
+    Notiflix.Notify.failure('Error de conexión');
     btn.disabled = false;
     btn.innerHTML = orig;
   }
 }
 
-let _sendTarget = null;
-
 function openSendNow(autoId, displayName) {
-  _sendTarget = autoId;
-  document.getElementById('sendAutoName').textContent = displayName || autoId;
-  document.getElementById('sendSkipChk').checked = false;
-  document.getElementById('sendOverlay').classList.add('open');
-}
-
-function closeSendModal() {
-  document.getElementById('sendOverlay').classList.remove('open');
-  _sendTarget = null;
-}
-
-document.getElementById('sendOverlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('sendOverlay')) closeSendModal();
-});
-
-async function confirmSendNow() {
-  const autoId = _sendTarget;
-  if (!autoId) return;
-  const skipSchedule = document.getElementById('sendSkipChk').checked;
-  closeSendModal();
-  await runNow(CID, autoId, skipSchedule);
+  Swal.fire({
+    title: 'Enviar ahora',
+    html: '<p style="font-size:13px;color:#51515d;margin-bottom:14px"><strong style="color:#171622">' + esc(displayName) + '</strong> se ejecutará inmediatamente.</p>' +
+          '<label class="send-chk">' +
+          '<input type="checkbox" id="swal-skip-chk">' +
+          '<span>' +
+          '<span class="send-chk-text">Cancelar la ejecución programada de hoy</span>' +
+          '<span class="send-chk-hint">Si no marcas esto, el envío programado del día también se ejecutará a su horario.</span>' +
+          '</span></label>',
+    showCancelButton: true,
+    confirmButtonText: '<i class="fa-solid fa-paper-plane"></i> Ejecutar ahora',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#171622',
+    reverseButtons: true,
+    preConfirm: () => document.getElementById('swal-skip-chk')?.checked || false,
+  }).then(result => {
+    if (result.isConfirmed) runNow(CID, autoId, result.value);
+  });
 }
 
 async function runNow(clientId, autoId, skipSchedule = false) {
@@ -621,19 +616,19 @@ async function runNow(clientId, autoId, skipSchedule = false) {
     });
     const d = await r.json();
     if (d.summary?.status === 'ok') {
-      toast('✓ ' + autoId + ' completado' + (skipSchedule ? ' (programado de hoy cancelado)' : ''));
-      if (res) res.innerHTML = '<div class="result-ok"><svg width="15" height="15" viewBox="0 0 24 24" fill="#15803d"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Exitoso · ' + esc(d.summary.duracion||'') + '</div>';
+      Notiflix.Notify.success(autoId + ' completado' + (skipSchedule ? ' — programado cancelado' : ''));
+      if (res) res.innerHTML = '<div class="result-ok"><i class="fa-solid fa-check" style="color:#15803d"></i> Exitoso · ' + esc(d.summary.duracion||'') + '</div>';
     } else {
       const err = d.summary?.error || d.error || 'Error desconocido';
-      toast('Error en ' + autoId, false);
+      Notiflix.Notify.failure('Error en ' + autoId);
       if (res) {
         res.innerHTML = '<div class="result-err"><strong>Error:</strong> ' + esc(err) + '</div>';
         if (d.stdout) res.innerHTML += '<pre class="log-pre">'+esc(d.stdout)+'</pre>';
       }
     }
-  } catch(e) { toast('Error de conexión', false); }
+  } catch(e) { Notiflix.Notify.failure('Error de conexión'); }
   finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>Enviar ahora'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar ahora'; }
     if (bar) bar.style.display = 'none';
     setTimeout(() => window.location.reload(), 4000);
   }
@@ -657,6 +652,7 @@ async function loadConfig(clientId, autoId) {
                \${isSchedule?'style=\\"max-width:140px\\"':''}
                autocomplete="off">
         \${f.secret?'<span class="fld-hint">Dejar vacío para conservar la contraseña actual</span>':''}
+        \${f.hint?\`<span class="fld-hint">\${esc(f.hint)}</span>\`:''}
         \${isSchedule&&f.value?'<span class="fld-hint">Próxima ejecución: '+esc(f.value)+' h (Perú) → '+nextRunLabel(f.value)+'</span>':''}
       </div>\`;
     }).join('');
@@ -678,63 +674,51 @@ function nextRunLabel(timeStr) {
   } catch { return ''; }
 }
 
-let _saveTarget = null;
-
 function saveConfig(clientId, autoId) {
-  _saveTarget = { clientId, autoId };
-  document.getElementById('confirmUser').value = '';
-  document.getElementById('confirmPass').value = '';
-  document.getElementById('confirmErr').style.display = 'none';
-  document.getElementById('saveOverlay').classList.add('open');
-  setTimeout(() => document.getElementById('confirmUser').focus(), 150);
-}
-
-function closeSaveModal() {
-  document.getElementById('saveOverlay').classList.remove('open');
-  _saveTarget = null;
-}
-
-document.getElementById('saveOverlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('saveOverlay')) closeSaveModal();
-});
-
-document.getElementById('confirmPass').addEventListener('keydown', e => {
-  if (e.key === 'Enter') confirmSave();
-});
-
-async function confirmSave() {
-  const username = document.getElementById('confirmUser').value.trim();
-  const password = document.getElementById('confirmPass').value;
-  const errEl = document.getElementById('confirmErr');
-  const btn = document.getElementById('btnConfirmSave');
-  if (!username || !password) { errEl.textContent = 'Completa usuario y contraseña'; errEl.style.display = 'block'; return; }
-  errEl.style.display = 'none';
-  btn.disabled = true; btn.textContent = 'Verificando...';
-  try {
-    const auth = await fetch('/api/auth/login', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ username, password }),
-    });
-    if (!auth.ok) {
-      errEl.textContent = 'Usuario o contraseña incorrectos';
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>Guardar';
-      return;
-    }
-    const { clientId, autoId } = _saveTarget;
+  Swal.fire({
+    title: 'Confirmar cambios',
+    html: '<p style="font-size:12px;color:#71707b;margin:0 0 12px">Ingresa tus credenciales para guardar la configuración</p>' +
+          '<input id="swal-user" class="swal2-input" placeholder="Usuario" autocomplete="username" style="margin-bottom:8px">' +
+          '<input id="swal-pass" class="swal2-input" type="password" placeholder="Contraseña" autocomplete="current-password">',
+    showCancelButton: true,
+    confirmButtonText: '<i class="fa-solid fa-floppy-disk"></i> Guardar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#171622',
+    reverseButtons: true,
+    focusConfirm: false,
+    didOpen: () => {
+      document.getElementById('swal-user').focus();
+      document.getElementById('swal-pass').addEventListener('keydown', e => {
+        if (e.key === 'Enter') Swal.clickConfirm();
+      });
+    },
+    preConfirm: async () => {
+      const username = document.getElementById('swal-user').value.trim();
+      const password = document.getElementById('swal-pass').value;
+      if (!username || !password) {
+        Swal.showValidationMessage('Completa usuario y contraseña');
+        return false;
+      }
+      try {
+        const auth = await fetch('/api/auth/login', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username, password }),
+        });
+        if (!auth.ok) { Swal.showValidationMessage('Usuario o contraseña incorrectos'); return false; }
+        return true;
+      } catch { Swal.showValidationMessage('Error de conexión'); return false; }
+    },
+  }).then(async result => {
+    if (!result.isConfirmed) return;
     const updates = {};
     document.querySelectorAll('#cfg-'+autoId+' input').forEach(i => { updates[i.name] = i.value; });
-    const r = await fetch('/api/clients/'+clientId+'/automations/'+autoId+'/config', {
-      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({updates}),
-    });
-    closeSaveModal();
-    r.ok ? toast('✓ Configuración guardada') : toast('Error al guardar', false);
-  } catch { errEl.textContent = 'Error de conexión'; errEl.style.display = 'block'; }
-  finally {
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>Guardar';
-  }
+    try {
+      const r = await fetch('/api/clients/'+clientId+'/automations/'+autoId+'/config', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ updates }),
+      });
+      r.ok ? Notiflix.Notify.success('Configuración guardada') : Notiflix.Notify.failure('Error al guardar');
+    } catch { Notiflix.Notify.failure('Error de conexión'); }
+  });
 }
 </script>
 </body>
