@@ -349,6 +349,21 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .swal2-validation-message{font-size:12px!important;border-radius:7px!important}
     .swal2-actions{gap:8px!important}
 
+    /* ─── MFA Banner ─── */
+    .mfa-banner{display:none;position:fixed;bottom:24px;right:24px;background:#fff;border:2px solid #f59e0b;border-radius:14px;padding:20px 22px;box-shadow:0 8px 30px rgba(8,7,14,.18);z-index:999;min-width:320px;max-width:380px;animation:mfa-in .25s ease}
+    @keyframes mfa-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    .mfa-banner-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .mfa-banner-hdr i{color:#f59e0b;font-size:20px;flex-shrink:0}
+    .mfa-banner-hdr strong{font-size:14px;color:#171622}
+    .mfa-banner-desc{font-size:12px;color:#71707b;margin-bottom:14px;line-height:1.5}
+    .mfa-input-row{display:flex;gap:8px}
+    .mfa-input{flex:1;padding:9px 13px;border:1.5px solid #e6e6ea;border-radius:8px;font-size:14px;outline:none;transition:border-color .2s;letter-spacing:2px;font-family:'Consolas','Menlo',monospace}
+    .mfa-input:focus{border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.12)}
+    .mfa-submit{padding:9px 16px;background:#f59e0b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap;flex-shrink:0}
+    .mfa-submit:hover{background:#d97706}
+    .mfa-submit:disabled{background:#d3d3d9;cursor:not-allowed}
+    .mfa-feedback{margin-top:8px;font-size:12px;min-height:16px}
+
     @keyframes spin{to{transform:rotate(360deg)}}
     @media(max-width:600px){.metrics-grid{grid-template-columns:1fr 1fr}.status-banner{flex-direction:column;align-items:flex-start}}
   </style>
@@ -376,6 +391,19 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
 <main class="page">
   ${cards}
 </main>
+
+<div id="mfa-banner" class="mfa-banner">
+  <div class="mfa-banner-hdr">
+    <i class="fa-solid fa-shield-halved"></i>
+    <strong>MiBanco requiere código MFA</strong>
+  </div>
+  <p class="mfa-banner-desc">El bot está en pausa esperando tu código de verificación. Ingrésalo abajo y el proceso continuará automáticamente.</p>
+  <div class="mfa-input-row">
+    <input id="mfa-code-input" class="mfa-input" type="text" placeholder="Código OTP" maxlength="8" autocomplete="one-time-code" inputmode="numeric" />
+    <button id="mfa-submit-btn" class="mfa-submit" onclick="submitMfaCode()">Enviar</button>
+  </div>
+  <div id="mfa-feedback" class="mfa-feedback"></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/apexcharts/dist/apexcharts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
@@ -673,6 +701,60 @@ function nextRunLabel(timeStr) {
     return (isToday ? 'hoy' : 'mañana') + ' en ' + (diffH > 0 ? diffH + 'h ' : '') + diffMin + 'min';
   } catch { return ''; }
 }
+
+// ─── MFA banner ────────────────────────────────────────────────────────────
+let _mfaPolling = null;
+function startMfaPoll() {
+  if (_mfaPolling) return;
+  _mfaPolling = setInterval(async () => {
+    try {
+      const r = await fetch('/api/mfa/mibanco');
+      const data = await r.json();
+      const banner = document.getElementById('mfa-banner');
+      if (data.status === 'waiting') {
+        banner.style.display = 'block';
+      } else if (data.status !== 'waiting') {
+        banner.style.display = 'none';
+        document.getElementById('mfa-code-input').value = '';
+        document.getElementById('mfa-feedback').textContent = '';
+        document.getElementById('mfa-submit-btn').disabled = false;
+      }
+    } catch {}
+  }, 3000);
+}
+async function submitMfaCode() {
+  const input = document.getElementById('mfa-code-input');
+  const btn = document.getElementById('mfa-submit-btn');
+  const fb = document.getElementById('mfa-feedback');
+  const code = input.value.trim();
+  if (!code) { fb.style.color = '#b91c1c'; fb.textContent = 'Ingresa el código'; return; }
+  btn.disabled = true;
+  fb.style.color = '#71707b';
+  fb.textContent = 'Enviando...';
+  try {
+    const r = await fetch('/api/mfa/mibanco', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (r.ok) {
+      fb.style.color = '#15803d';
+      fb.textContent = '✓ Código enviado — el bot continuará en breve';
+    } else {
+      fb.style.color = '#b91c1c';
+      fb.textContent = 'Error al enviar';
+      btn.disabled = false;
+    }
+  } catch {
+    fb.style.color = '#b91c1c';
+    fb.textContent = 'Error de conexión';
+    btn.disabled = false;
+  }
+}
+document.getElementById('mfa-code-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitMfaCode();
+});
+startMfaPoll();
 
 function saveConfig(clientId, autoId) {
   Swal.fire({

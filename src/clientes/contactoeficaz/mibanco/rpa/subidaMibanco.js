@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../../../../shared/config');
 const { log } = require('../../../../shared/util');
+const mfaLib = require('../../../../shared/mfa');
 
 async function subirArchivo(archivoPath) {
   if (!archivoPath) {
@@ -26,11 +27,44 @@ async function subirArchivo(archivoPath) {
     await page.fill('#form_password', config.mibanco.pass);
     await page.click('#submit_button');
 
-    log('Esperando landing (botón fileUploaderButton)');
-    await page.waitForSelector('#fileUploaderButton', {
-      state: 'visible',
-      timeout: 30000,
-    });
+    log('Esperando post-login...');
+    const reached = await page
+      .waitForSelector('#fileUploaderButton', { state: 'visible', timeout: 90000 })
+      .then(() => 'landing')
+      .catch(() => 'mfa');
+
+    if (reached === 'mfa') {
+      const mfaShot = path.join(config.downloadDir, `mibanco_mfa_${Date.now()}.png`);
+      await page.screenshot({ path: mfaShot, fullPage: true }).catch(() => {});
+      log(`MFA detectado — captura: ${mfaShot}`);
+
+      // Si hay botón para enviar el código OTP, clickearlo primero
+      const enviarBtn = page.locator('button, input[type="submit"], a')
+        .filter({ hasText: /Continuar|Enviar|Send code|Send/i }).first();
+      if (await enviarBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        log('Click en botón de envío de código OTP...');
+        await enviarBtn.click();
+        await page.waitForTimeout(1500);
+      }
+
+      log('Esperando código MFA del usuario en el dashboard (5 min)...');
+      const code = await mfaLib.waitForCode(5 * 60 * 1000);
+      log('Código MFA recibido');
+
+      // Intentar detectar el campo OTP con varios selectores comunes
+      const otpField = page.locator([
+        'input[name*="otp" i]', 'input[name*="code" i]', 'input[name*="passcode" i]',
+        'input[id*="otp" i]', 'input[id*="code" i]', 'input[type="tel"]',
+        'input[maxlength="6"]', 'input[maxlength="8"]', 'input[maxlength="4"]',
+      ].join(', ')).first();
+      await otpField.waitFor({ state: 'visible', timeout: 15000 });
+      await otpField.fill(code);
+      await page.locator('button[type="submit"], input[type="submit"]').last().click();
+
+      log('Código enviado, esperando landing post-MFA...');
+      await page.waitForSelector('#fileUploaderButton', { state: 'visible', timeout: 30000 });
+    }
+
     // Deja que React monte handlers y terminen XHRs del dashboard
     await page
       .waitForLoadState('networkidle', { timeout: 10000 })
@@ -157,6 +191,7 @@ async function subirArchivo(archivoPath) {
 
     return { dryRun: false, screenshot: postShot, folderDestino: folderValue };
   } catch (err) {
+    mfaLib.clearState();
     const shot = path.join(
       config.downloadDir,
       `error_subida_${Date.now()}.png`

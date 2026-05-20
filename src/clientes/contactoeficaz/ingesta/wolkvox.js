@@ -52,8 +52,15 @@ async function listarLlamadas(host, token, campaignId, fecha) {
   const res = await fetch(url, {
     headers: { Accept: 'application/json', 'wolkvox-token': token },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    console.error(`  campaña ${campaignId} HTTP ${res.status}: ${res.statusText}`);
+    return [];
+  }
   const json = await res.json();
+  if (json.error) {
+    console.error(`  campaña ${campaignId} API error: ${json.error}`);
+    return [];
+  }
   return Array.isArray(json.data) ? json.data : [];
 }
 
@@ -158,15 +165,9 @@ async function main() {
 
     const registros = [];
 
-    // Filtro opcional por host: WOLKVOX_HOSTS=wv0059,wv0067
-    const hostsFilter = (process.env.WOLKVOX_HOSTS || '')
-      .split(',').map(h => h.trim()).filter(Boolean);
-
     for (const srv of servidores) {
       // tipo=0 (override manual) → procesar todos sin filtro de turno
       if (tipo !== 0 && srv.TIM_EJE_SI !== tipo) continue;
-      // Filtro por host si se especificó WOLKVOX_HOSTS
-      if (hostsFilter.length > 0 && !hostsFilter.some(h => srv.AMI_HOST_VC.includes(h))) continue;
       estado.totalServidores++;
       console.log(`[wolkvox] servidor: ${srv.AMI_USER_VC} (campañas ${srv.CAMP_MIN_PROV_EXT}–${srv.CAMP_MAX_PROV_EXT})`);
 

@@ -8,6 +8,7 @@ const envLib = require('../lib/env');
 const scheduler = require('../lib/scheduler');
 const versionLib = require('../lib/version');
 const { renderDashboard } = require('../views/dashboard');
+const mfaLib = require('../../src/shared/mfa');
 
 const ROOT = path.resolve(__dirname, '../..');
 const router = express.Router();
@@ -95,6 +96,21 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun', requireAut
   proc.on('error', err => {
     if (!res.headersSent) res.status(500).json({ error: err.message });
   });
+});
+
+// GET /api/mfa/mibanco — estado actual del challenge MFA
+router.get('/api/mfa/mibanco', requireAuth, (req, res) => {
+  res.json(mfaLib.readState() || { status: 'idle' });
+});
+
+// POST /api/mfa/mibanco — usuario envía el código OTP
+router.post('/api/mfa/mibanco', requireAuth, (req, res) => {
+  const { code } = req.body;
+  if (!code || typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ error: 'Código inválido' });
+  }
+  mfaLib.resolveWithCode(code.trim());
+  res.json({ ok: true });
 });
 
 // GET /api/screenshot/:filename — sirve PNG de descargas/ con auth
