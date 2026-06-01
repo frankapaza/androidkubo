@@ -6,6 +6,7 @@ const users = require('../lib/users');
 const { renderAdmin } = require('../views/admin');
 const { renderDashboard } = require('../views/dashboard');
 const versionLib = require('../lib/version');
+const botStatus = require('../lib/bot-status');
 
 const router = express.Router();
 
@@ -22,14 +23,16 @@ router.get('/admin/view/:clientId', requireAdmin, (req, res) => {
   if (!client) return res.redirect('/admin');
   const fs = require('fs');
   const lastRuns = {};
+  const enabledStates = {};
   for (const [id, automation] of Object.entries(client.automations)) {
     try {
       if (fs.existsSync(automation.lastRunFile)) {
         lastRuns[id] = JSON.parse(fs.readFileSync(automation.lastRunFile, 'utf8'));
       }
     } catch {}
+    enabledStates[id] = botStatus.isEnabled(id);
   }
-  res.send(renderDashboard(req.user, client, lastRuns, { isAdminView: true, viewClientId: req.params.clientId, version: versionLib.read() }));
+  res.send(renderDashboard(req.user, client, lastRuns, { isAdminView: true, viewClientId: req.params.clientId, version: versionLib.read(), enabledStates }));
 });
 
 // GET /api/admin/users — lista todos los usuarios (sin passwordHash)
