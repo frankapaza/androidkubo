@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const clients = require('./clients');
 const envLib = require('./env');
+const botStatus = require('./bot-status');
 
 const ROOT = path.resolve(__dirname, '../..');
 const TIMEZONE = 'America/Lima';
@@ -87,6 +88,10 @@ function start() {
         if (!expr) continue;
 
         const task = cron.schedule(expr, () => {
+          if (!botStatus.isEnabled(autoId)) {
+            console.log(`[scheduler] ${clientId}/${autoId} omitido — bot inactivo`);
+            return;
+          }
           if (shouldSkipToday(autoId)) {
             console.log(`[scheduler] ${clientId}/${autoId} omitido hoy (envío manual ya realizado)`);
             clearSkip(autoId);

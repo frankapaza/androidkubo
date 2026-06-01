@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const clients = require('../lib/clients');
 const envLib = require('../lib/env');
 const scheduler = require('../lib/scheduler');
+const botStatus = require('../lib/bot-status');
 const versionLib = require('../lib/version');
 const { renderDashboard } = require('../views/dashboard');
 const mfaLib = require('../../src/shared/mfa');
@@ -46,11 +47,13 @@ router.get('/dashboard', requireAuth, (req, res) => {
   if (!client) return;
 
   const lastRuns = {};
+  const enabledStates = {};
   for (const [id, automation] of Object.entries(client.automations)) {
     lastRuns[id] = readLastRun(automation);
+    enabledStates[id] = botStatus.isEnabled(id);
   }
 
-  res.send(renderDashboard(req.user, client, lastRuns, { version: versionLib.read() }));
+  res.send(renderDashboard(req.user, client, lastRuns, { version: versionLib.read(), enabledStates }));
 });
 
 // GET /api/clients/:clientId/automations/:automationId/status
@@ -60,10 +63,24 @@ router.get('/api/clients/:clientId/automations/:automationId/status', requireAut
   res.json({ lastRun: readLastRun(automation) });
 });
 
+// PUT /api/clients/:clientId/automations/:automationId/toggle
+router.put('/api/clients/:clientId/automations/:automationId/toggle', requireAuth, (req, res) => {
+  const automation = getAutomation(req, res);
+  if (!automation) return;
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled debe ser boolean' });
+  botStatus.setEnabled(req.params.automationId, enabled);
+  res.json({ ok: true, enabled });
+});
+
 // POST /api/clients/:clientId/automations/:automationId/rerun
 router.post('/api/clients/:clientId/automations/:automationId/rerun', requireAuth, (req, res) => {
   const automation = getAutomation(req, res);
   if (!automation) return;
+
+  if (!botStatus.isEnabled(req.params.automationId)) {
+    return res.status(403).json({ error: 'Bot inactivo. Actívalo primero desde el dashboard.' });
+  }
 
   if (req.body?.skipSchedule) {
     scheduler.markSkipToday(req.params.automationId);

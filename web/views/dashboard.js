@@ -43,7 +43,7 @@ function statusInfo(lastRun) {
     : { label:'Con error', color:'#b91c1c', bg:'#fff5f5', dot:'#ef4444', icon:'fa-solid fa-circle-exclamation' };
 }
 
-function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
+function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true) {
   const s = statusInfo(lastRun);
   const rel = lastRun ? relativeTime(lastRun.timestamp) : null;
 
@@ -60,21 +60,33 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView) {
   ].filter(Boolean) : [];
 
   return `
-<section class="acard" id="card-${esc(autoId)}">
+<section class="acard${enabled ? '' : ' acard-disabled'}" id="card-${esc(autoId)}" data-enabled="${enabled}">
 
   <div class="acard-hdr" style="border-left:3px solid ${esc(auto.color||'#3d3d4b')}">
     <div class="acard-hdr-info">
       <h2 class="acard-title">${esc(auto.displayName)}</h2>
       <div class="acard-meta">
-        <span class="status-pill" style="background:${s.bg};color:${s.color}">
-          <span class="sdot" style="background:${s.dot}"></span>${s.label}
-        </span>
-        ${rel ? `<span class="meta-sep">·</span><span class="acard-time">${rel}</span>` : ''}
+        ${enabled
+          ? `<span class="status-pill" style="background:${s.bg};color:${s.color}">
+              <span class="sdot" style="background:${s.dot}"></span>${s.label}
+             </span>
+             ${rel ? `<span class="meta-sep">·</span><span class="acard-time">${rel}</span>` : ''}`
+          : `<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span>`
+        }
       </div>
     </div>
-    <button class="btn-send-now" id="btnSend-${esc(autoId)}" onclick="openSendNow('${esc(autoId)}','${esc(auto.displayName)}')">
-      <i class="fa-solid fa-paper-plane"></i> Enviar ahora
-    </button>
+    <div class="acard-hdr-right">
+      <label class="toggle-wrap" title="${enabled ? 'Bot activo — clic para inactivar' : 'Bot inactivo — clic para activar'}">
+        <input type="checkbox" class="toggle-input" ${enabled ? 'checked' : ''} onchange="toggleBot('${esc(autoId)}', this.checked)">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span class="toggle-lbl">${enabled ? 'Activo' : 'Inactivo'}</span>
+      </label>
+      <button class="btn-send-now" id="btnSend-${esc(autoId)}"
+        onclick="openSendNow('${esc(autoId)}','${esc(auto.displayName)}')"
+        ${enabled ? '' : 'disabled'}>
+        <i class="fa-solid fa-paper-plane"></i> Enviar ahora
+      </button>
+    </div>
   </div>
 
   <div class="tabs-bar">
@@ -179,9 +191,10 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
   const isAdminView = opts.isAdminView || false;
   const viewClientId = opts.viewClientId || user.clientId;
   const version = opts.version || null;
+  const enabledStates = opts.enabledStates || {};
   const deployStr = version ? formatDeploy(version.deployDate) : '';
   const cards = Object.entries(client.automations)
-    .map(([id, auto]) => renderCard(viewClientId, id, auto, lastRuns[id] || null, isAdminView))
+    .map(([id, auto]) => renderCard(viewClientId, id, auto, lastRuns[id] || null, isAdminView, enabledStates[id] !== false))
     .join('\n');
 
   const automationTypes = Object.fromEntries(
@@ -227,8 +240,20 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
 
     /* ─── Automation Card ─── */
     .acard{background:#fff;border:1px solid #e6e6ea;border-radius:13px;overflow:hidden;box-shadow:0 1px 3px rgba(8,7,14,.05)}
+    .acard-disabled{opacity:.6;filter:grayscale(.35)}
     .acard-hdr{padding:16px 22px;border-bottom:1px solid #f4f4f5;display:flex;align-items:center;justify-content:space-between;gap:12px}
     .acard-hdr-info{display:flex;flex-direction:column;gap:6px}
+    .acard-hdr-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+
+    /* ─── Toggle switch ─── */
+    .toggle-wrap{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+    .toggle-input{display:none}
+    .toggle-track{width:36px;height:20px;background:#d3d3d9;border-radius:999px;position:relative;transition:background .2s;flex-shrink:0}
+    .toggle-input:checked + .toggle-track{background:#22c55e}
+    .toggle-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(8,7,14,.2)}
+    .toggle-input:checked + .toggle-track .toggle-thumb{transform:translateX(16px)}
+    .toggle-lbl{font-size:11px;font-weight:600;color:#71707b;min-width:42px}
+    .badge-inactive{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#f4f4f5;color:#a1a1aa;font-size:11px;font-weight:600}
     .acard-title{font-size:15px;font-weight:600;color:#171622;letter-spacing:-.2px}
     .acard-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .status-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600}
@@ -755,6 +780,41 @@ document.getElementById('mfa-code-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitMfaCode();
 });
 startMfaPoll();
+
+async function toggleBot(autoId, enabled) {
+  const card = document.getElementById('card-'+autoId);
+  try {
+    const r = await fetch('/api/clients/'+CID+'/automations/'+autoId+'/toggle', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ enabled }),
+    });
+    if (!r.ok) throw new Error('server');
+    Notiflix.Notify.success(enabled ? autoId + ' activado' : autoId + ' inactivado');
+    card.dataset.enabled = enabled;
+    card.classList.toggle('acard-disabled', !enabled);
+    const lbl = card.querySelector('.toggle-lbl');
+    if (lbl) lbl.textContent = enabled ? 'Activo' : 'Inactivo';
+    const chk = card.querySelector('.toggle-input');
+    if (chk) chk.title = enabled ? 'Bot activo — clic para inactivar' : 'Bot inactivo — clic para activar';
+    const btn = document.getElementById('btnSend-'+autoId);
+    if (btn) btn.disabled = !enabled;
+    const meta = card.querySelector('.acard-meta');
+    if (meta) {
+      if (enabled) {
+        meta.innerHTML = meta.innerHTML.replace(/<span class="badge-inactive">.*?<\/span>/s, '');
+      } else {
+        if (!meta.querySelector('.badge-inactive')) {
+          meta.innerHTML = '<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span>';
+        }
+      }
+    }
+  } catch {
+    Notiflix.Notify.failure('Error al cambiar estado');
+    const chk = card.querySelector('.toggle-input');
+    if (chk) chk.checked = !enabled;
+  }
+}
 
 function saveConfig(clientId, autoId) {
   Swal.fire({
