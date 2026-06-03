@@ -130,6 +130,24 @@ router.post('/api/mfa/mibanco', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/debug/bot-status — muestra el estado actual del archivo bot_status.json (solo admin)
+router.get('/api/debug/bot-status', requireAuth, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' });
+  const STATUS_FILE = path.resolve(__dirname, '../../descargas/bot_status.json');
+  const LOG_FILE    = path.resolve(__dirname, '../../logs/kubot-web.out.log');
+  const exists = fs.existsSync(STATUS_FILE);
+  let content = null;
+  if (exists) { try { content = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); } catch (e) { content = { parseError: e.message }; } }
+  let lastLogs = [];
+  try {
+    if (fs.existsSync(LOG_FILE)) {
+      const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n');
+      lastLogs = lines.filter(l => l.includes('[bot-status]')).slice(-50);
+    }
+  } catch {}
+  res.json({ statusFilePath: STATUS_FILE, exists, content, lastLogs });
+});
+
 // GET /api/screenshot/:filename — sirve PNG de descargas/ con auth
 router.get('/api/screenshot/:filename', requireAuth, (req, res) => {
   const name = req.params.filename;
