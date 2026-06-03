@@ -809,7 +809,8 @@ async function toggleBot(autoId, enabled) {
     const meta = card.querySelector('.acard-meta');
     if (meta) {
       if (enabled) {
-        meta.innerHTML = meta.innerHTML.replace(/<span class="badge-inactive">[\s\S]*?<\/span>/, '');
+        const badge = meta.querySelector('.badge-inactive');
+        if (badge) badge.remove();
       } else {
         if (!meta.querySelector('.badge-inactive')) {
           meta.innerHTML = '<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span>';
