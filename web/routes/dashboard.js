@@ -137,6 +137,21 @@ router.post('/api/mfa/mibanco', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/debug/toggle-test — prueba directa de escritura de bot-status (solo admin, via URL)
+router.get('/api/debug/toggle-test', requireAuth, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' });
+  const autoId  = req.query.autoId  || 'wolkvox';
+  const enabled = req.query.enabled !== 'false';
+  console.log(`[toggle-test] directo: autoId=${autoId}, enabled=${enabled}`);
+  try {
+    botStatus.setEnabled(autoId, enabled);
+    const state = botStatus.isEnabled(autoId);
+    res.json({ ok: true, autoId, enabled, readback: state });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/debug/bot-status — muestra el estado actual del archivo bot_status.json (solo admin)
 router.get('/api/debug/bot-status', requireAuth, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' });
