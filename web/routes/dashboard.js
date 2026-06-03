@@ -63,20 +63,13 @@ router.get('/api/clients/:clientId/automations/:automationId/status', requireAut
   res.json({ lastRun: readLastRun(automation) });
 });
 
-// PUT /api/clients/:clientId/automations/:automationId/toggle
-router.put('/api/clients/:clientId/automations/:automationId/toggle', requireAuth, (req, res) => {
-  const { clientId, automationId } = req.params;
-  console.log(`[toggle] PUT recibido: clientId=${clientId}, autoId=${automationId}, body=`, JSON.stringify(req.body), `user=${req.user?.username} role=${req.user?.role}`);
+// POST /api/clients/:clientId/automations/:automationId/toggle
+router.post('/api/clients/:clientId/automations/:automationId/toggle', requireAuth, (req, res) => {
   const automation = getAutomation(req, res);
-  if (!automation) {
-    console.log(`[toggle] getAutomation devolvió null para ${clientId}/${automationId}`);
-    return;
-  }
+  if (!automation) return;
   const { enabled } = req.body;
-  console.log(`[toggle] enabled recibido: ${enabled} (tipo: ${typeof enabled})`);
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled debe ser boolean' });
-  botStatus.setEnabled(automationId, enabled);
-  console.log(`[toggle] OK — ${automationId} = ${enabled}`);
+  botStatus.setEnabled(req.params.automationId, enabled);
   res.json({ ok: true, enabled });
 });
 
@@ -135,47 +128,6 @@ router.post('/api/mfa/mibanco', requireAuth, (req, res) => {
   }
   mfaLib.resolveWithCode(code.trim());
   res.json({ ok: true });
-});
-
-// GET /api/debug/toggle-test — prueba directa de escritura de bot-status (solo admin, via URL)
-router.get('/api/debug/toggle-test', requireAuth, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' });
-  const autoId  = req.query.autoId  || 'wolkvox';
-  const enabled = req.query.enabled !== 'false';
-  console.log(`[toggle-test] directo: autoId=${autoId}, enabled=${enabled}`);
-  try {
-    botStatus.setEnabled(autoId, enabled);
-    const state = botStatus.isEnabled(autoId);
-    res.json({ ok: true, autoId, enabled, readback: state });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// GET /api/debug/bot-status — muestra el estado actual del archivo bot_status.json (solo admin)
-router.get('/api/debug/bot-status', requireAuth, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' });
-  const STATUS_FILE = path.resolve(__dirname, '../../descargas/bot_status.json');
-  const LOG_FILE    = path.resolve(__dirname, '../../logs/kubot-web.out.log');
-  const exists = fs.existsSync(STATUS_FILE);
-  let content = null;
-  if (exists) { try { content = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); } catch (e) { content = { parseError: e.message }; } }
-  let lastLogs = [];
-  try {
-    if (fs.existsSync(LOG_FILE)) {
-      const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n');
-      lastLogs = lines.filter(l => l.includes('[bot-status]') || l.includes('[toggle]')).slice(-60);
-    }
-  } catch {}
-  const ERROR_FILE = path.resolve(__dirname, '../../logs/kubot-web.error.log');
-  let lastErrors = [];
-  try {
-    if (fs.existsSync(ERROR_FILE)) {
-      const lines = fs.readFileSync(ERROR_FILE, 'utf8').split('\n');
-      lastErrors = lines.slice(-30);
-    }
-  } catch {}
-  res.json({ statusFilePath: STATUS_FILE, exists, content, lastLogs, lastErrors });
 });
 
 // GET /api/screenshot/:filename — sirve PNG de descargas/ con auth

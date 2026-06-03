@@ -785,7 +785,7 @@ async function toggleBot(autoId, enabled) {
   const card = document.getElementById('card-'+autoId);
   try {
     const r = await fetch('/api/clients/'+CID+'/automations/'+autoId+'/toggle', {
-      method: 'PUT',
+      method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ enabled }),
     });
