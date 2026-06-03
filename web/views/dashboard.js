@@ -77,7 +77,7 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
     </div>
     <div class="acard-hdr-right">
       <label class="toggle-wrap" title="${enabled ? 'Bot activo — clic para inactivar' : 'Bot inactivo — clic para activar'}">
-        <input type="checkbox" class="toggle-input" ${enabled ? 'checked' : ''} onchange="toggleBot('${esc(autoId)}', this.checked)">
+        <input type="checkbox" class="toggle-input" data-autoid="${esc(autoId)}" ${enabled ? 'checked' : ''}>
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
         <span class="toggle-lbl">${enabled ? 'Activo' : 'Inactivo'}</span>
       </label>
@@ -247,7 +247,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
 
     /* ─── Toggle switch ─── */
     .toggle-wrap{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
-    .toggle-input{display:none}
+    .toggle-input{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
     .toggle-track{width:36px;height:20px;background:#d3d3d9;border-radius:999px;position:relative;transition:background .2s;flex-shrink:0}
     .toggle-input:checked + .toggle-track{background:#22c55e}
     .toggle-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(8,7,14,.2)}
@@ -448,6 +448,13 @@ Notiflix.Notify.init({
   fontFamily: "'Segoe UI',system-ui,-apple-system,sans-serif",
   width: '300px',
   clickToClose: true,
+});
+
+document.addEventListener('change', function(e) {
+  const input = e.target;
+  if (!input.classList.contains('toggle-input')) return;
+  const autoId = input.dataset.autoid;
+  if (autoId) toggleBot(autoId, input.checked);
 });
 
 const _histCache = {};
