@@ -65,11 +65,18 @@ router.get('/api/clients/:clientId/automations/:automationId/status', requireAut
 
 // PUT /api/clients/:clientId/automations/:automationId/toggle
 router.put('/api/clients/:clientId/automations/:automationId/toggle', requireAuth, (req, res) => {
+  const { clientId, automationId } = req.params;
+  console.log(`[toggle] PUT recibido: clientId=${clientId}, autoId=${automationId}, body=`, JSON.stringify(req.body), `user=${req.user?.username} role=${req.user?.role}`);
   const automation = getAutomation(req, res);
-  if (!automation) return;
+  if (!automation) {
+    console.log(`[toggle] getAutomation devolvió null para ${clientId}/${automationId}`);
+    return;
+  }
   const { enabled } = req.body;
+  console.log(`[toggle] enabled recibido: ${enabled} (tipo: ${typeof enabled})`);
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled debe ser boolean' });
-  botStatus.setEnabled(req.params.automationId, enabled);
+  botStatus.setEnabled(automationId, enabled);
+  console.log(`[toggle] OK — ${automationId} = ${enabled}`);
   res.json({ ok: true, enabled });
 });
 
@@ -142,10 +149,18 @@ router.get('/api/debug/bot-status', requireAuth, (req, res) => {
   try {
     if (fs.existsSync(LOG_FILE)) {
       const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n');
-      lastLogs = lines.filter(l => l.includes('[bot-status]')).slice(-50);
+      lastLogs = lines.filter(l => l.includes('[bot-status]') || l.includes('[toggle]')).slice(-60);
     }
   } catch {}
-  res.json({ statusFilePath: STATUS_FILE, exists, content, lastLogs });
+  const ERROR_FILE = path.resolve(__dirname, '../../logs/kubot-web.error.log');
+  let lastErrors = [];
+  try {
+    if (fs.existsSync(ERROR_FILE)) {
+      const lines = fs.readFileSync(ERROR_FILE, 'utf8').split('\n');
+      lastErrors = lines.slice(-30);
+    }
+  } catch {}
+  res.json({ statusFilePath: STATUS_FILE, exists, content, lastLogs, lastErrors });
 });
 
 // GET /api/screenshot/:filename — sirve PNG de descargas/ con auth
