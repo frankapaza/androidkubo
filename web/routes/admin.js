@@ -72,6 +72,18 @@ router.put('/api/admin/users/:username/password', requireAdmin, async (req, res)
   res.json({ ok: true });
 });
 
+// POST /api/admin/bot-states — establece el estado activo/inactivo de varios bots a la vez
+router.post('/api/admin/bot-states', requireAdmin, (req, res) => {
+  const { states } = req.body;
+  if (!states || typeof states !== 'object' || Array.isArray(states)) {
+    return res.status(400).json({ error: 'states debe ser un objeto { autoId: boolean }' });
+  }
+  for (const [autoId, enabled] of Object.entries(states)) {
+    if (typeof enabled === 'boolean') botStatus.setEnabled(autoId, enabled);
+  }
+  res.json({ ok: true });
+});
+
 // DELETE /api/admin/users/:username — elimina un usuario
 router.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   const target = users.findByUsername(req.params.username);
