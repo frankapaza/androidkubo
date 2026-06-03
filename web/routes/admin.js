@@ -72,6 +72,15 @@ router.put('/api/admin/users/:username/password', requireAdmin, async (req, res)
   res.json({ ok: true });
 });
 
+// GET /api/admin/reset-states — fija estados iniciales correctos para contactoeficaz (uso único)
+router.get('/api/admin/reset-states', requireAdmin, (req, res) => {
+  botStatus.setEnabled('wolkvox',    true);
+  botStatus.setEnabled('ipbusiness', true);
+  botStatus.setEnabled('mibanco',    false);
+  botStatus.setEnabled('surgir',     false);
+  res.json({ ok: true, estados: { wolkvox: true, ipbusiness: true, mibanco: false, surgir: false } });
+});
+
 // POST /api/admin/bot-states — establece el estado activo/inactivo de varios bots a la vez
 router.post('/api/admin/bot-states', requireAdmin, (req, res) => {
   const { states } = req.body;
