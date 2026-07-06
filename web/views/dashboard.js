@@ -127,6 +127,10 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
     <div class="metrics-grid">
       ${metrics.map(m => `<div class="metric"><span class="metric-lbl">${m.l}</span><span class="metric-val">${m.v}</span></div>`).join('')}
     </div>` : ''}
+    ${lastRun.reconciliacion ? renderServidoresTabla(lastRun.reconciliacion, {
+      clientId, autoId,
+      fecha: (lastRun.fechaReporte || '').split('/').reverse().join(''), // DD/MM/YYYY -> YYYYMMDD
+    }) : ''}
     ${(() => {
       const url = screenshotUrl(lastRun.screenshot);
       if (!url) return '';
@@ -388,6 +392,13 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .mfa-submit:hover{background:#d97706}
     .mfa-submit:disabled{background:#d3d3d9;cursor:not-allowed}
     .mfa-feedback{margin-top:8px;font-size:12px;min-height:16px}
+
+    .srv-tabla{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+    .srv-tabla th,.srv-tabla td{padding:6px 8px;border-bottom:1px solid #f0f0f2;text-align:left}
+    .srv-tabla th{color:#71707b;font-weight:600;text-transform:uppercase;letter-spacing:.3px;font-size:11px}
+    .btn-rerun-srv{margin-left:8px;padding:3px 10px;font-size:11px;border:1px solid #f59e0b;
+      background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer}
+    .btn-rerun-srv:disabled{opacity:.6;cursor:default}
 
     @keyframes spin{to{transform:rotate(360deg)}}
     @media(max-width:600px){.metrics-grid{grid-template-columns:1fr 1fr}.status-banner{flex-direction:column;align-items:flex-start}}
@@ -661,6 +672,23 @@ function openSendNow(autoId, displayName) {
   });
 }
 
+async function rerunServer(clientId, autoId, host, user, fecha, campsCsv, btn) {
+  if (!confirm('¿Reintentar las campañas pendientes de ' + host + ' (' + user + ')?')) return;
+  const campaigns = campsCsv.split(',').map(function(x){ return parseInt(x,10); }).filter(Boolean);
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Reintentando…';
+  try {
+    const r = await fetch('/api/clients/'+clientId+'/automations/'+autoId+'/rerun-server', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: host, user: user, fecha: fecha, campaigns: campaigns }),
+    });
+    const j = await r.json();
+    if (!r.ok) { alert('Error: ' + (j.error || r.status)); btn.disabled = false; btn.textContent = txt; return; }
+    const rec = j.summary ? (j.summary.recuperadas || []).length : 0;
+    alert('Recuperadas: ' + rec + ' campaña(s). Actualizando…');
+    location.reload();
+  } catch (e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = txt; }
+}
+
 async function runNow(clientId, autoId, skipSchedule = false) {
   const btn = document.getElementById('btnSend-'+autoId);
   const bar = document.getElementById('running-'+autoId);
@@ -875,4 +903,32 @@ function saveConfig(clientId, autoId) {
 </html>`;
 }
 
-module.exports = { renderDashboard };
+// Tabla de reconciliación por servidor (host+user) con botón "Reintentar pendientes".
+function renderServidoresTabla(reconciliacion, ctx) {
+  if (!reconciliacion || !Array.isArray(reconciliacion.servidores) || !reconciliacion.servidores.length) return '';
+  const filas = reconciliacion.servidores.map(s => {
+    const tienePend = s.pendientes && s.pendientes.length;
+    const csv = tienePend ? s.pendientes.map(p => p.camp).join(',') : '';
+    const estadoCell = tienePend
+      ? `<span style="color:#b45309;font-weight:600">⚠ ${s.pendientes.length} pendientes</span>`
+      : `<span style="color:#15803d">OK</span>`;
+    const boton = tienePend
+      ? `<button type="button" class="btn-rerun-srv"
+           onclick="rerunServer('${esc(ctx.clientId)}','${esc(ctx.autoId)}','${esc(s.host)}','${esc(String(s.user))}','${esc(ctx.fecha)}','${csv}',this)">
+           Reintentar pendientes</button>`
+      : '';
+    return `<tr>
+      <td>${esc(s.host)}</td>
+      <td>${esc(String(s.user))}</td>
+      <td>${esc(String(s.turno))}</td>
+      <td>${esc(String(s.conData))}/${esc(String(s.campanasTotal))}</td>
+      <td>${esc(String(s.registrosValidos))}</td>
+      <td>${estadoCell} ${boton}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="srv-tabla">
+    <thead><tr><th>Host</th><th>Cliente</th><th>Turno</th><th>Camp. c/data</th><th>Registros</th><th>Estado</th></tr></thead>
+    <tbody>${filas}</tbody></table>`;
+}
+
+module.exports = { renderDashboard, renderServidoresTabla };
