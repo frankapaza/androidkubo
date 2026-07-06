@@ -115,6 +115,49 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun', requireAut
   });
 });
 
+// POST /api/clients/:clientId/automations/:automationId/rerun-server
+// Modo dirigido: re-ejecuta solo las campañas pendientes de un servidor (solo wolkvox).
+router.post('/api/clients/:clientId/automations/:automationId/rerun-server', requireAuth, (req, res) => {
+  const automation = getAutomation(req, res);
+  if (!automation) return;
+  if (req.params.automationId !== 'wolkvox') {
+    return res.status(400).json({ error: 'Solo disponible para wolkvox' });
+  }
+  if (!botStatus.isEnabled(req.params.automationId)) {
+    return res.status(403).json({ error: 'Bot inactivo. Actívalo primero desde el dashboard.' });
+  }
+  const errMsg = validarRerunServerBody(req.body);
+  if (errMsg) return res.status(400).json({ error: errMsg });
+
+  const { host, user, fecha, campaigns } = req.body;
+  req.socket.setTimeout(10 * 60 * 1000);
+
+  const proc = spawn('node', [automation.script], {
+    env: {
+      ...process.env,
+      WOLKVOX_ONLY_HOST: host,
+      WOLKVOX_ONLY_USER: user,
+      WOLKVOX_ONLY_CAMPS: campaigns.join(','),
+      WOLKVOX_FECHA: fecha,
+    },
+    cwd: ROOT,
+  });
+
+  let stdout = '', stderr = '';
+  proc.stdout.on('data', d => { stdout += d.toString(); });
+  proc.stderr.on('data', d => { stderr += d.toString(); });
+  proc.on('close', code => {
+    let summary = null;
+    const lines = stdout.trim().split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (line.startsWith('{') && line.endsWith('}')) { try { summary = JSON.parse(line); break; } catch {} }
+    }
+    res.json({ exitCode: code, summary, stderr: stderr.slice(-1000) });
+  });
+  proc.on('error', err => { if (!res.headersSent) res.status(500).json({ error: err.message }); });
+});
+
 // GET /api/mfa/mibanco — estado actual del challenge MFA
 router.get('/api/mfa/mibanco', requireAuth, (req, res) => {
   res.json(mfaLib.readState() || { status: 'idle' });
@@ -194,4 +237,16 @@ router.put('/api/clients/:clientId/automations/:automationId/config', requireAut
   res.json({ ok: true });
 });
 
+function validarRerunServerBody(body) {
+  if (!body || typeof body !== 'object') return 'Body inválido';
+  const { host, user, fecha, campaigns } = body;
+  if (!host || typeof host !== 'string') return 'host requerido';
+  if (!user || typeof user !== 'string') return 'user requerido';
+  if (!/^\d{8}$/.test(String(fecha || ''))) return 'fecha debe ser yyyyMMdd';
+  if (!Array.isArray(campaigns) || campaigns.length === 0) return 'campaigns requerido';
+  if (!campaigns.every(c => Number.isInteger(c) && c > 0)) return 'campaigns deben ser enteros positivos';
+  return null;
+}
+
 module.exports = router;
+module.exports.validarRerunServerBody = validarRerunServerBody;
