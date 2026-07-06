@@ -35,11 +35,17 @@ function row(label, value) {
 }
 
 function buildHtml(estado, displayName) {
-  const ok       = estado.status === 'ok';
-  const color    = ok ? '#15803d' : '#b91c1c';
-  const bgColor  = ok ? '#f0fdf4' : '#fff5f5';
-  const dotColor = ok ? '#22c55e' : '#ef4444';
-  const titulo   = ok ? 'Ingesta completada correctamente' : 'Error en la ingesta';
+  const st = estado.status || 'ok';
+  const theme = st === 'ok'
+    ? { color:'#15803d', bg:'#f0fdf4', dot:'#22c55e', titulo:'Ingesta completada correctamente' }
+    : st === 'warning'
+    ? { color:'#b45309', bg:'#fffbeb', dot:'#f59e0b', titulo:'Ingesta completada con pendientes' }
+    : { color:'#b91c1c', bg:'#fff5f5', dot:'#ef4444', titulo:'Error en la ingesta' };
+  const ok       = st === 'ok';
+  const color    = theme.color;
+  const bgColor  = theme.bg;
+  const dotColor = theme.dot;
+  const titulo   = theme.titulo;
 
   const rows = [
     estado.fechaReporte     ? row('Fecha procesada',    estado.fechaReporte) : '',
@@ -59,6 +65,18 @@ function buildHtml(estado, displayName) {
                   letter-spacing:.4px;margin-bottom:6px;">Detalle del error</div>
       <div style="font-family:Consolas,monospace;font-size:12px;color:#7f1d1d;
                   word-break:break-word;line-height:1.5">${estado.error}</div>
+    </div>` : '';
+
+  const rec = estado.reconciliacion;
+  const pendientesBlock = rec && rec.totalPendientes > 0 ? `
+    <div style="margin:0 24px 20px;padding:14px 16px;background:#fffbeb;
+                border:1px solid #fde68a;border-radius:9px;">
+      <div style="font-size:11px;font-weight:600;color:#b45309;text-transform:uppercase;
+                  letter-spacing:.4px;margin-bottom:8px;">Campañas pendientes (${rec.totalPendientes})</div>
+      ${rec.servidores.filter(s => s.pendientes && s.pendientes.length).map(s => `
+        <div style="font-size:12px;color:#7c5510;margin-bottom:4px">
+          <b>${s.host}</b> · ${s.user}: ${s.pendientes.map(p => `${p.camp} (${p.resultado})`).join(', ')}
+        </div>`).join('')}
     </div>` : '';
 
   return `<!DOCTYPE html>
@@ -99,6 +117,8 @@ function buildHtml(estado, displayName) {
       <tbody>${rows}</tbody>
     </table>
 
+    ${pendientesBlock}
+
     ${errorBlock}
 
     <!-- Footer -->
@@ -112,14 +132,22 @@ function buildHtml(estado, displayName) {
 </html>`;
 }
 
+function buildSubject(estado, displayName) {
+  const st = estado.status || 'ok';
+  const fecha = estado.fechaReporte || new Date().toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
+  if (st === 'error')   return `✗ ${displayName} — Error en ingesta [${fecha}]`;
+  if (st === 'warning') {
+    const n = estado.reconciliacion ? estado.reconciliacion.totalPendientes : 0;
+    return `⚠ ${displayName} — Advertencia: ${n} campañas pendientes [${fecha}]`;
+  }
+  return `✓ ${displayName} — Ingesta completada [${fecha}]`;
+}
+
 async function notificarEjecucion(estado, displayName) {
   const to = process.env.NOTIF_MAIL_TO;
   if (!to || !process.env.NOTIF_SMTP_HOST || !process.env.NOTIF_SMTP_USER) return;
 
-  const ok    = estado.status === 'ok';
-  const fecha = estado.fechaReporte || new Date().toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
-  const icon  = ok ? '✓' : '✗';
-  const subject = `${icon} ${displayName} — ${ok ? 'Ingesta completada' : 'Error en ingesta'} [${fecha}]`;
+  const subject = buildSubject(estado, displayName);
 
   const transporter = buildTransporter();
   await transporter.sendMail({
@@ -132,4 +160,4 @@ async function notificarEjecucion(estado, displayName) {
   console.log(`[notificar] Correo enviado a ${to}`);
 }
 
-module.exports = { notificarEjecucion };
+module.exports = { notificarEjecucion, buildHtml, buildSubject };
