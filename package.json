@@ -12,8 +12,10 @@
     "surgir:descarga": "node src/clientes/contactoeficaz/surgir/rpa/descargaCrm.js",
     "ingesta:wolkvox": "node src/clientes/contactoeficaz/ingesta/wolkvox.js",
     "ingesta:ipbusiness": "node src/clientes/contactoeficaz/ingesta/ipbusiness.js",
+    "reporte:gestiones": "node src/clientes/contactoeficaz/reporte/gestiones.js",
     "web": "node web/server.js",
     "web:seed": "node web/seed.js",
+    "test": "node --test \"test/**/*.test.js\"",
     "postinstall": "playwright install chromium"
   },
   "engines": {
