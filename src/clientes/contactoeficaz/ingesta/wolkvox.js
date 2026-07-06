@@ -126,7 +126,98 @@ function fechaReporteDisplay(yyyymmdd) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+// ─── Modo dirigido: re-ejecuta solo campañas puntuales de un servidor ─────────
+// Usado por el botón "Reintentar pendientes" del panel. No pasa por el flujo diario
+// (no reescribe last_run/history como una corrida completa); parchea la reconciliación.
+async function ejecutarDirigido(pool, { host, user, camps, fecha }) {
+  const resumen = { status: 'ok', modo: 'dirigido', host, user, fecha, recuperadas: [], aunPendientes: [] };
+
+  // Obtener token del servidor desde el SP companion
+  const servidores = await listarServidoresConCampanas(pool);
+  const srv = servidores.find(s => s.host === host && s.user === user);
+  const token = srv ? srv.token : null;
+  if (!token) {
+    resumen.status = 'error';
+    resumen.error = 'Servidor no encontrado en el SP';
+    process.stdout.write(`\n${JSON.stringify(resumen)}\n`);
+    return;
+  }
+
+  const registros = [];
+  for (const camp of camps) {
+    const { data, resultado } = await fetchCampanaConReintento({
+      intentar: () => intentarCampana({ host, token, camp, fecha }),
+      maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
+    });
+    let validos = 0;
+    for (const item of data) { const reg = parsearLlamada(item); if (reg) { registros.push(reg); validos++; } }
+    if (resultado === 'ok' && validos > 0) resumen.recuperadas.push({ camp, validos, raw: data.length });
+    else resumen.aunPendientes.push({ camp, resultado });
+  }
+
+  // Dedup en memoria (misma clave que el modo normal)
+  const seen = new Set();
+  const dedup = registros.filter(r => {
+    const k = `${r.idConfBi}|${r.idClieBi}|${r.idTelBi}|${r.fecGesVc}|${r.horGesVc}|${r.tipResSi}`;
+    if (seen.has(k)) return false; seen.add(k); return true;
+  });
+
+  if (dedup.length > 0) {
+    await limpiarTmpGestiones(pool);
+    await bulkRegistrarTmpGestiones(pool, dedup);
+    await registrarGestiones(pool);
+  }
+
+  // Parchear la reconciliación persistida (history + last_run si aplica)
+  const histFile = path.join(DOWNLOADS_DIR, 'history_wolkvox.json');
+  try {
+    if (fs.existsSync(histFile) && resumen.recuperadas.length) {
+      const hist = JSON.parse(fs.readFileSync(histFile, 'utf8'));
+      const { history: h2, patched } = parchearReconciliacion(hist, { fecha, host, user, recuperadas: resumen.recuperadas });
+      if (patched) {
+        fs.writeFileSync(histFile, JSON.stringify(h2, null, 2));
+        const display = `${fecha.slice(6,8)}/${fecha.slice(4,6)}/${fecha.slice(0,4)}`;
+        const lastFile = path.join(DOWNLOADS_DIR, 'last_run_wolkvox.json');
+        if (fs.existsSync(lastFile)) {
+          const last = JSON.parse(fs.readFileSync(lastFile, 'utf8'));
+          if (last.fechaReporte === display) {
+            const patchedLast = h2.find(e => e.fechaReporte === display);
+            if (patchedLast) fs.writeFileSync(lastFile, JSON.stringify(patchedLast, null, 2));
+          }
+        }
+      }
+    }
+  } catch (e) { console.error('[wolkvox] parcheo reconciliación falló:', e.message); }
+
+  console.log(`[wolkvox] dirigido: recuperadas=${resumen.recuperadas.length}, aún pendientes=${resumen.aunPendientes.length}`);
+  process.stdout.write(`\n${JSON.stringify(resumen)}\n`);
+}
+
 async function main() {
+  // Rama dirigida (botón del panel): procesa solo un servidor + campañas dadas y sale.
+  const onlyHost  = process.env.WOLKVOX_ONLY_HOST;
+  const onlyUser  = process.env.WOLKVOX_ONLY_USER;
+  const onlyCamps = (process.env.WOLKVOX_ONLY_CAMPS || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
+  if (onlyHost && onlyUser && onlyCamps.length && process.env.WOLKVOX_FECHA) {
+    const poolD = createPool({
+      server:   process.env.MCOB_DB_SERVER,
+      database: process.env.MCOB_DB_DATABASE,
+      user:     process.env.MCOB_DB_USER,
+      pass:     process.env.MCOB_DB_PASS,
+    });
+    let code = 0;
+    try {
+      await poolD.connect();
+      await ejecutarDirigido(poolD, { host: onlyHost, user: onlyUser, camps: onlyCamps, fecha: process.env.WOLKVOX_FECHA });
+    } catch (err) {
+      code = 1;
+      process.stdout.write(`\n${JSON.stringify({ status: 'error', modo: 'dirigido', error: err.message })}\n`);
+    } finally {
+      try { await poolD.close(); } catch {}
+    }
+    process.exit(code);
+  }
+
   const t0 = Date.now();
   const estado = {
     status:          'ok',
