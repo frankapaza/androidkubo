@@ -71,6 +71,28 @@ async function listarServidoresAsterisk(pool) {
   return res.recordset;
 }
 
+// Agrupa el recordset de SP_LISTAR_ASTERISK_SERVIDOR_CAMPANA por servidor.
+// Función pura (separada para poder testear sin BD).
+function agruparServidoresCampanas(recordset) {
+  const mapa = new Map();
+  for (const r of recordset) {
+    const k = `${r.AMI_HOST_VC}|${r.AMI_USER_VC}|${r.AMI_PASS_VC}|${r.TIM_EJE_SI}`;
+    if (!mapa.has(k)) {
+      mapa.set(k, { host: r.AMI_HOST_VC, user: r.AMI_USER_VC, token: r.AMI_PASS_VC, timEje: r.TIM_EJE_SI, _set: new Set() });
+    }
+    mapa.get(k)._set.add(r.ID_CAMP_PROV_EXT_SI);
+  }
+  return [...mapa.values()].map(s => ({
+    host: s.host, user: s.user, token: s.token, timEje: s.timEje,
+    campanas: [...s._set].sort((a, b) => a - b),
+  }));
+}
+
+async function listarServidoresConCampanas(pool) {
+  const res = await pool.request().execute('ASTERISK.SP_LISTAR_ASTERISK_SERVIDOR_CAMPANA');
+  return agruparServidoresCampanas(res.recordset);
+}
+
 async function registrarGestiones(pool) {
   const req = pool.request();
   req.timeout = 300000; // 5 min
@@ -113,6 +135,8 @@ module.exports = {
   limpiarTmpGestiones,
   bulkRegistrarTmpGestiones,
   listarServidoresAsterisk,
+  listarServidoresConCampanas,
+  agruparServidoresCampanas,
   registrarGestiones,
   dedupGestionesVarios,
 };
