@@ -4,13 +4,17 @@ const path = require('path');
 const { decryptTripleDES }           = require('../../../shared/ingesta/crypto');
 const { createPool, limpiarTmpGestiones,
         bulkRegistrarTmpGestiones,
-        listarServidoresAsterisk,
+        listarServidoresConCampanas,
         registrarGestiones,
         dedupGestionesVarios }       = require('../../../shared/ingesta/mcob');
+const { intentarCampana, fetchCampanaConReintento, sleep } = require('../../../shared/ingesta/wolkvox-fetch');
+const { construirReconciliacion, calcularStatus, esDiaHabilLima, parchearReconciliacion } = require('./reconciliacion');
 const { notificarEjecucion }         = require('../../../shared/ingesta/notificar');
 
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './descargas');
 const KEY_CRYPT     = process.env.KEY_CRYPT;
+const MAX_REINTENTOS = parseInt(process.env.WOLKVOX_MAX_REINTENTOS || '2', 10);
+const BACKOFF_MS     = parseInt(process.env.WOLKVOX_BACKOFF_MS || '1500', 10);
 
 // ─── Tiempo Lima ────────────────────────────────────────────────────────────
 
@@ -160,32 +164,33 @@ async function main() {
     await limpiarTmpGestiones(pool);
 
     estado.fase = 'servidores';
-    const servidores = await listarServidoresAsterisk(pool);
+    const servidores = await listarServidoresConCampanas(pool);
     console.log(`[wolkvox] servidores encontrados: ${servidores.length}`);
 
     const registros = [];
+    const reconServidores = []; // acumulador para reconciliación
 
     for (const srv of servidores) {
-      // tipo=0 (override manual) → procesar todos sin filtro de turno
-      if (tipo !== 0 && srv.TIM_EJE_SI !== tipo) continue;
+      // tipo=0 (override manual) → procesar todos; si no, solo los del turno actual
+      if (tipo !== 0 && srv.timEje !== tipo) continue;
       estado.totalServidores++;
-      console.log(`[wolkvox] servidor: ${srv.AMI_USER_VC} (campañas ${srv.CAMP_MIN_PROV_EXT}–${srv.CAMP_MAX_PROV_EXT})`);
+      console.log(`[wolkvox] servidor: ${srv.host} (${srv.user}) — ${srv.campanas.length} campañas`);
 
-      for (let camp = srv.CAMP_MIN_PROV_EXT; camp <= srv.CAMP_MAX_PROV_EXT; camp++) {
+      const resultados = [];
+      for (const camp of srv.campanas) {
         estado.totalCampanas++;
-        try {
-          const llamadas = await listarLlamadas(srv.AMI_HOST_VC, srv.AMI_PASS_VC, String(camp), fecha);
-          estado.totalRegistros += llamadas.length;
-          if (llamadas.length) console.log(`  campaña ${camp}: ${llamadas.length} llamadas`);
-
-          for (const item of llamadas) {
-            const reg = parsearLlamada(item);
-            if (reg) registros.push(reg);
-          }
-        } catch (err) {
-          console.error(`  campaña ${camp} error: ${err.message}`);
-        }
+        const { data, resultado } = await fetchCampanaConReintento({
+          intentar: () => intentarCampana({ host: srv.host, token: srv.token, camp, fecha }),
+          maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
+        });
+        estado.totalRegistros += data.length;
+        let validos = 0;
+        for (const item of data) { const reg = parsearLlamada(item); if (reg) { registros.push(reg); validos++; } }
+        resultados.push({ camp, raw: data.length, validos, resultado });
+        if (resultado !== 'ok') console.error(`  campaña ${camp}: ${resultado} (sin data tras reintentos)`);
+        else console.log(`  campaña ${camp}: ${data.length} llamadas`);
       }
+      reconServidores.push({ host: srv.host, user: srv.user, timEje: srv.timEje, resultados });
     }
 
     // ── Capa 1: dedup en memoria antes del bulk insert ───────────────────────
@@ -203,7 +208,13 @@ async function main() {
     estado.tamaño = `${registrosDedup.length} registros válidos`;
     console.log(`[wolkvox] registros válidos: ${registrosDedup.length} / ${estado.totalRegistros}`);
 
-    if (registrosDedup.length > 0) {
+    const diaHabil = esDiaHabilLima();
+    estado.reconciliacion = construirReconciliacion(reconServidores, { diaHabil });
+
+    if (process.env.WOLKVOX_DRY_INGESTA === 'true') {
+      console.log('[wolkvox] WOLKVOX_DRY_INGESTA=true — sin escritura; reconciliación:',
+        JSON.stringify(estado.reconciliacion, null, 2));
+    } else if (registrosDedup.length > 0) {
       estado.fase = 'bulk_insert';
       await bulkRegistrarTmpGestiones(pool, registrosDedup);
 
@@ -229,7 +240,10 @@ async function main() {
     }
 
     estado.fase = 'completado';
-    console.log('[wolkvox] Procesamiento terminado correctamente');
+    if (estado.status === 'ok') {
+      estado.status = calcularStatus(estado.reconciliacion.totalPendientes, diaHabil);
+    }
+    console.log(`[wolkvox] Procesamiento terminado — status=${estado.status}, pendientes=${estado.reconciliacion.totalPendientes}`);
 
   } catch (err) {
     estado.status = 'error';
