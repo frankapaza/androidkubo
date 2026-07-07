@@ -399,6 +399,22 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .btn-rerun-srv{margin-left:8px;padding:3px 10px;font-size:11px;border:1px solid #f59e0b;
       background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer}
     .btn-rerun-srv:disabled{opacity:.6;cursor:default}
+    .btn-ver-camp{margin-left:6px;padding:2px 7px;font-size:12px;line-height:1;border:1px solid #e6e6ea;
+      background:#fff;border-radius:6px;cursor:pointer}
+    .btn-ver-camp:hover{background:#f4f4f5}
+    .cmodal{position:fixed;inset:0;background:rgba(8,7,14,.55);display:flex;align-items:center;
+      justify-content:center;z-index:1000;padding:20px}
+    .cmodal-box{background:#fff;border-radius:12px;max-width:640px;width:100%;max-height:82vh;
+      display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(8,7,14,.35)}
+    .cmodal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;
+      border-bottom:1px solid #f0f0f2;font-size:14px;font-weight:600;color:#23232f}
+    .cmodal-x{border:none;background:none;font-size:16px;cursor:pointer;color:#71707b;line-height:1}
+    .cmodal-body{padding:8px 18px 18px;overflow:auto}
+    .camp-srv{margin-top:12px}
+    .camp-srv-h{font-size:12px;color:#51515d;margin-bottom:6px}
+    .camp-tabla{width:100%;border-collapse:collapse;font-size:12px}
+    .camp-tabla th,.camp-tabla td{padding:5px 8px;border-bottom:1px solid #f4f4f5;text-align:left}
+    .camp-tabla th{color:#71707b;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
 
     @keyframes spin{to{transform:rotate(360deg)}}
     @media(max-width:600px){.metrics-grid{grid-template-columns:1fr 1fr}.status-banner{flex-direction:column;align-items:flex-start}}
@@ -591,7 +607,8 @@ function renderHistTable(autoId) {
           </td>
           <td style="white-space:nowrap">\${esc(h.duracion||'—')}</td>
           <td>\${h.error ? \`<span class="hist-err-tip" title="\${esc(h.error)}">\${esc(h.error)}</span>\`
-            : (h.fase === 'completado' ? '<span style="font-size:11px;color:#a1a1aa">Completado</span>' : '—')}</td>
+            : (h.fase === 'completado' ? '<span style="font-size:11px;color:#a1a1aa">Completado</span>' : '—')}
+            \${h.reconciliacion && h.reconciliacion.servidores ? \`<button class="btn-ver-camp" title="Ver detalle por campaña" onclick="openCampanasHist('\${esc(autoId)}','\${esc(h.timestamp)}')">🔍</button>\` : ''}</td>
           <td>\${h.status !== 'ok' ? \`<button class="btn-retry" onclick="resendFailed('\${esc(autoId)}', this)"><i class="fa-solid fa-rotate-right"></i> Reintentar</button>\` : '<span style="font-size:11px;color:#d3d3d9">—</span>'}</td>
         </tr>\`).join('')}
       </tbody>
@@ -688,6 +705,58 @@ async function rerunServer(clientId, autoId, host, user, fecha, campsCsv, btn) {
     location.reload();
   } catch (e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = txt; }
 }
+
+function campEstadoBadge(r){
+  if (r === 'ok') return '<span style="color:#15803d">ok</span>';
+  if (r === 'vacio') return '<span style="color:#b45309">&#9888; vacío</span>';
+  return '<span style="color:#b91c1c">&#9888; error</span>';
+}
+function buildCampanasHtml(servidores){
+  if (!servidores || !servidores.length) return '<p style="padding:16px;color:#71707b">Sin detalle por campaña para esta corrida.</p>';
+  var partes = servidores.map(function(s){
+    var camps = s.campanas || [];
+    if (!camps.length) return '';
+    var conData = camps.filter(function(c){ return c.resultado === 'ok'; }).length;
+    var filas = camps.map(function(c){
+      return '<tr><td>' + c.camp + '</td>' +
+             '<td style="text-align:right">' + (c.validos != null ? c.validos : '—') + '</td>' +
+             '<td style="text-align:right">' + (c.raw != null ? c.raw : '—') + '</td>' +
+             '<td>' + campEstadoBadge(c.resultado) + '</td>' +
+             '<td style="text-align:right">' + (c.intentos != null ? c.intentos : '—') + '</td></tr>';
+    }).join('');
+    return '<div class="camp-srv"><div class="camp-srv-h"><b>' + esc(s.host || '') + '</b> &middot; ' +
+           esc(String(s.user || '')) + ' <span style="color:#a1a1aa">' + conData + '/' + camps.length + ' con data</span></div>' +
+           '<table class="camp-tabla"><thead><tr><th>Campaña</th><th style="text-align:right">Válidos</th>' +
+           '<th style="text-align:right">Crudas</th><th>Estado</th><th style="text-align:right">Intentos</th></tr></thead>' +
+           '<tbody>' + filas + '</tbody></table></div>';
+  });
+  var html = partes.join('');
+  return html.trim() ? html : '<p style="padding:16px;color:#71707b">Sin detalle por campaña para esta corrida.</p>';
+}
+function openCampanasModal(titulo, servidores){
+  document.getElementById('campModalTitle').textContent = titulo;
+  document.getElementById('campModalBody').innerHTML = buildCampanasHtml(servidores);
+  document.getElementById('campModal').style.display = 'flex';
+}
+function closeCampanasModal(){
+  var m = document.getElementById('campModal');
+  if (m) m.style.display = 'none';
+}
+function openCampanasSrv(btn){
+  var camps = [];
+  try { camps = JSON.parse(btn.getAttribute('data-campanas') || '[]'); } catch (e) {}
+  var srv = btn.getAttribute('data-srv') || '';
+  var parts = srv.split(' · ');
+  openCampanasModal('Detalle · ' + srv, [{ host: parts[0], user: parts.slice(1).join(' · '), campanas: camps }]);
+}
+function openCampanasHist(autoId, ts){
+  var hist = _histCache[autoId] || [];
+  var entry = hist.filter(function(e){ return e.timestamp === ts; })[0];
+  var rec = entry && entry.reconciliacion;
+  openCampanasModal('Detalle · ' + ((entry && entry.fechaReporte) || ''), rec ? rec.servidores : null);
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeCampanasModal(); });
+document.addEventListener('click', function(e){ if (e.target && e.target.id === 'campModal') closeCampanasModal(); });
 
 async function runNow(clientId, autoId, skipSchedule = false) {
   const btn = document.getElementById('btnSend-'+autoId);
@@ -899,6 +968,15 @@ function saveConfig(clientId, autoId) {
   });
 }
 </script>
+  <div id="campModal" class="cmodal" style="display:none">
+    <div class="cmodal-box">
+      <div class="cmodal-head">
+        <span id="campModalTitle"></span>
+        <button type="button" class="cmodal-x" onclick="closeCampanasModal()">✕</button>
+      </div>
+      <div id="campModalBody" class="cmodal-body"></div>
+    </div>
+  </div>
 </body>
 </html>`;
 }
@@ -917,13 +995,19 @@ function renderServidoresTabla(reconciliacion, ctx) {
            onclick="rerunServer('${esc(ctx.clientId)}','${esc(ctx.autoId)}','${esc(s.host)}','${esc(String(s.user))}','${esc(ctx.fecha)}','${csv}',this)">
            Reintentar pendientes</button>`
       : '';
+    const detalle = Array.isArray(s.campanas) && s.campanas.length
+      ? `<button type="button" class="btn-ver-camp" title="Ver detalle por campaña"
+           data-srv="${esc(s.host + ' · ' + s.user)}"
+           data-campanas="${esc(JSON.stringify(s.campanas))}"
+           onclick="openCampanasSrv(this)">🔍</button>`
+      : '';
     return `<tr>
       <td>${esc(s.host)}</td>
       <td>${esc(String(s.user))}</td>
       <td>${esc(String(s.turno))}</td>
       <td>${esc(String(s.conData))}/${esc(String(s.campanasTotal))}</td>
       <td>${esc(String(s.registrosValidos))}</td>
-      <td>${estadoCell} ${boton}</td>
+      <td>${estadoCell} ${detalle} ${boton}</td>
     </tr>`;
   }).join('');
   return `<table class="srv-tabla">
