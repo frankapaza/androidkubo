@@ -41,6 +41,13 @@ test('intentarCampana clasifica 200 vacío como vacio', async () => {
   assert.strictEqual(r.resultado, 'vacio');
 });
 
+test('intentarCampana pasa un AbortSignal (timeout) a fetch', async () => {
+  let opts;
+  const fakeFetch = async (_url, o) => { opts = o; return { ok: true, json: async () => ({ data: [] }) }; };
+  await intentarCampana({ host: 'h', token: 't', camp: 1, fecha: '20260703', fetchImpl: fakeFetch, timeoutMs: 5000 });
+  assert.ok(opts.signal instanceof AbortSignal);
+});
+
 test('intentarCampana clasifica !ok y json.error y excepción como error', async () => {
   const noOk = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => ({ ok:false }) });
   assert.strictEqual(noOk.resultado, 'error');

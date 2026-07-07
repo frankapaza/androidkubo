@@ -13,8 +13,9 @@ const { notificarEjecucion }         = require('../../../shared/ingesta/notifica
 
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './descargas');
 const KEY_CRYPT     = process.env.KEY_CRYPT;
-const MAX_REINTENTOS = parseInt(process.env.WOLKVOX_MAX_REINTENTOS || '2', 10);
-const BACKOFF_MS     = parseInt(process.env.WOLKVOX_BACKOFF_MS || '1500', 10);
+const MAX_REINTENTOS   = parseInt(process.env.WOLKVOX_MAX_REINTENTOS || '2', 10);
+const BACKOFF_MS       = parseInt(process.env.WOLKVOX_BACKOFF_MS || '1500', 10);
+const FETCH_TIMEOUT_MS = parseInt(process.env.WOLKVOX_FETCH_TIMEOUT_MS || '20000', 10);
 
 // ─── Tiempo Lima ────────────────────────────────────────────────────────────
 
@@ -146,7 +147,7 @@ async function ejecutarDirigido(pool, { host, user, camps, fecha }) {
   const registros = [];
   for (const camp of camps) {
     const { data, resultado } = await fetchCampanaConReintento({
-      intentar: () => intentarCampana({ host, token, camp, fecha }),
+      intentar: () => intentarCampana({ host, token, camp, fecha, timeoutMs: FETCH_TIMEOUT_MS }),
       maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
     });
     let validos = 0;
@@ -271,7 +272,7 @@ async function main() {
       for (const camp of srv.campanas) {
         estado.totalCampanas++;
         const { data, resultado } = await fetchCampanaConReintento({
-          intentar: () => intentarCampana({ host: srv.host, token: srv.token, camp, fecha }),
+          intentar: () => intentarCampana({ host: srv.host, token: srv.token, camp, fecha, timeoutMs: FETCH_TIMEOUT_MS }),
           maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
         });
         estado.totalRegistros += data.length;
