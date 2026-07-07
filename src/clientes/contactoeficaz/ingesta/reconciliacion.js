@@ -8,6 +8,9 @@ function construirReconciliacion(servidores, { diaHabil }) {
     const pendientes = s.resultados
       .filter(r => r.resultado !== 'ok')
       .map(r => ({ camp: r.camp, resultado: r.resultado }));
+    const campanas = s.resultados.map(r => ({
+      camp: r.camp, validos: r.validos || 0, raw: r.raw || 0, resultado: r.resultado, intentos: r.intentos,
+    }));
     return {
       host: s.host, user: s.user, turno: s.timEje,
       campanasTotal: s.resultados.length,
@@ -15,6 +18,7 @@ function construirReconciliacion(servidores, { diaHabil }) {
       registrosRaw: s.resultados.reduce((a, r) => a + (r.raw || 0), 0),
       registrosValidos: s.resultados.reduce((a, r) => a + (r.validos || 0), 0),
       pendientes,
+      campanas,
     };
   });
   const totalPendientes = out.reduce((a, s) => a + s.pendientes.length, 0);
@@ -34,6 +38,7 @@ function yyyymmddToDisplay(f) {
 function parchearReconciliacion(history, { fecha, host, user, recuperadas }) {
   const display = yyyymmddToDisplay(fecha);
   const camps = new Set(recuperadas.map(r => r.camp));
+  const recMap = new Map(recuperadas.map(r => [r.camp, r]));
   const sumV = recuperadas.reduce((a, r) => a + (r.validos || 0), 0);
   const sumR = recuperadas.reduce((a, r) => a + (r.raw || 0), 0);
   let patched = false;
@@ -53,6 +58,11 @@ function parchearReconciliacion(history, { fecha, host, user, recuperadas }) {
         conData: s.conData + recuperadasReal,
         registrosValidos: s.registrosValidos + sumV,
         registrosRaw: s.registrosRaw + sumR,
+        campanas: Array.isArray(s.campanas) ? s.campanas.map(c => {
+          if (!recMap.has(c.camp)) return c;
+          const r = recMap.get(c.camp);
+          return { ...c, resultado: 'ok', validos: r.validos || 0, raw: r.raw || 0 };
+        }) : s.campanas,
       };
     });
     if (!cambiado) return entry;

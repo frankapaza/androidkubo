@@ -271,14 +271,14 @@ async function main() {
       const resultados = [];
       for (const camp of srv.campanas) {
         estado.totalCampanas++;
-        const { data, resultado } = await fetchCampanaConReintento({
+        const { data, resultado, intentos } = await fetchCampanaConReintento({
           intentar: () => intentarCampana({ host: srv.host, token: srv.token, camp, fecha, timeoutMs: FETCH_TIMEOUT_MS }),
           maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
         });
         estado.totalRegistros += data.length;
         let validos = 0;
         for (const item of data) { const reg = parsearLlamada(item); if (reg) { registros.push(reg); validos++; } }
-        resultados.push({ camp, raw: data.length, validos, resultado });
+        resultados.push({ camp, raw: data.length, validos, resultado, intentos });
         if (resultado !== 'ok') console.error(`  campaña ${camp}: ${resultado} (sin data tras reintentos)`);
         else console.log(`  campaña ${camp}: ${data.length} llamadas`);
       }
