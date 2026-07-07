@@ -60,9 +60,9 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
   ].filter(Boolean) : [];
 
   return `
-<section class="acard${enabled ? '' : ' acard-disabled'}" id="card-${esc(autoId)}" data-enabled="${enabled}">
+<section class="acard${enabled ? '' : ' acard-disabled acard-collapsed'}" id="card-${esc(autoId)}" data-enabled="${enabled}">
 
-  <div class="acard-hdr" style="border-left:3px solid ${esc(auto.color||'#3d3d4b')}">
+  <div class="acard-hdr" onclick="toggleCardCollapse('${esc(autoId)}', event)" style="border-left:3px solid ${esc(auto.color||'#3d3d4b')}">
     <div class="acard-hdr-info">
       <h2 class="acard-title">${esc(auto.displayName)}</h2>
       <div class="acard-meta">
@@ -71,7 +71,7 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
               <span class="sdot" style="background:${s.dot}"></span>${s.label}
              </span>
              ${rel ? `<span class="meta-sep">·</span><span class="acard-time">${rel}</span>` : ''}`
-          : `<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span>`
+          : `<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span><i class="fa-solid fa-chevron-right collapse-chevron"></i>`
         }
       </div>
     </div>
@@ -245,6 +245,10 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     /* ─── Automation Card ─── */
     .acard{background:#fff;border:1px solid #e6e6ea;border-radius:13px;overflow:hidden;box-shadow:0 1px 3px rgba(8,7,14,.05)}
     .acard-disabled{opacity:.6;filter:grayscale(.35)}
+    .acard-disabled .acard-hdr{cursor:pointer}
+    .collapse-chevron{color:#a1a1aa;font-size:11px;margin-left:2px;transition:transform .15s}
+    .acard-disabled:not(.acard-collapsed) .collapse-chevron{transform:rotate(90deg)}
+    .acard-collapsed .tabs-bar,.acard-collapsed .tab-panel{display:none}
     .acard-hdr{padding:16px 22px;border-bottom:1px solid #f4f4f5;display:flex;align-items:center;justify-content:space-between;gap:12px}
     .acard-hdr-info{display:flex;flex-direction:column;gap:6px}
     .acard-hdr-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
@@ -885,6 +889,13 @@ document.getElementById('mfa-code-input').addEventListener('keydown', e => {
 });
 startMfaPoll();
 
+function toggleCardCollapse(autoId, e) {
+  const card = document.getElementById('card-'+autoId);
+  if (!card || !card.classList.contains('acard-disabled')) return;   // solo tarjetas inactivas
+  if (e && e.target && e.target.closest && e.target.closest('.acard-hdr-right')) return; // no en toggle/enviar
+  card.classList.toggle('acard-collapsed');
+}
+
 async function toggleBot(autoId, enabled) {
   const card = document.getElementById('card-'+autoId);
   try {
@@ -897,6 +908,7 @@ async function toggleBot(autoId, enabled) {
     Notiflix.Notify.success(enabled ? autoId + ' activado' : autoId + ' inactivado');
     card.dataset.enabled = enabled;
     card.classList.toggle('acard-disabled', !enabled);
+    card.classList.toggle('acard-collapsed', !enabled);   // inactiva → minimizada; activa → completa
     const lbl = card.querySelector('.toggle-lbl');
     if (lbl) lbl.textContent = enabled ? 'Activo' : 'Inactivo';
     const chk = card.querySelector('.toggle-input');
@@ -906,11 +918,10 @@ async function toggleBot(autoId, enabled) {
     const meta = card.querySelector('.acard-meta');
     if (meta) {
       if (enabled) {
-        const badge = meta.querySelector('.badge-inactive');
-        if (badge) badge.remove();
+        meta.querySelectorAll('.badge-inactive, .collapse-chevron').forEach(el => el.remove());
       } else {
         if (!meta.querySelector('.badge-inactive')) {
-          meta.innerHTML = '<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span>';
+          meta.innerHTML = '<span class="badge-inactive"><i class="fa-solid fa-power-off" style="font-size:9px"></i> Inactivo</span><i class="fa-solid fa-chevron-right collapse-chevron"></i>';
         }
       }
     }
