@@ -110,7 +110,7 @@ function parsearLlamada(item) {
     horGesVc,
     tipResSi:       homol.tipResSi,
     tipSolSi:       homol.tipSolSi,
-    nroTelVc:       item.telephone || '',
+    nroTelVc:       normalizarTelefono(item.telephone),
     desObsVc:       item.result    || '',
     rutAudVc:       '',
     tipGesSi:       1,
@@ -120,6 +120,13 @@ function parsearLlamada(item) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Normaliza el teléfono: si tiene más de 9 dígitos (celular con prefijo, ej. 92XXXXXXXXX),
+// se queda con los últimos 9 (quita el prefijo del frente). Fijos de <=9 dígitos no se tocan.
+function normalizarTelefono(tel) {
+  const d = String(tel || '').replace(/\D/g, '');
+  return d.length > 9 ? d.slice(-9) : d;
+}
 
 function formatDuracion(ms) {
   const s = Math.round(ms / 1000);
@@ -400,4 +407,4 @@ if (require.main === module) {
   main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 }
 
-module.exports = { main, ejecutar };
+module.exports = { main, ejecutar, normalizarTelefono };
