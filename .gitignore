@@ -28,3 +28,4 @@ credenciales.txt
 
 # n8n legacy (reemplazado por scheduler interno)
 n8n/
+descargas/wolkvox.lock
