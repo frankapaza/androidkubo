@@ -8,13 +8,16 @@ async function intentarCampana({ host, token, camp, fecha, fetchImpl = fetch, ti
       headers: { Accept: 'application/json', 'wolkvox-token': token },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return { resultado: 'error', data: [] };
+    if (!res.ok) return { resultado: 'error', data: [], detalle: { tipo: 'http', status: res.status } };
     const json = await res.json();
-    if (json.error) return { resultado: 'error', data: [] };
+    if (json.error) return { resultado: 'error', data: [], detalle: { tipo: 'api', msg: String(json.error).slice(0, 140) } };
     const data = Array.isArray(json.data) ? json.data : [];
-    return { resultado: data.length ? 'ok' : 'vacio', data };
-  } catch {
-    return { resultado: 'error', data: [] };
+    return data.length
+      ? { resultado: 'ok', data, detalle: null }
+      : { resultado: 'vacio', data: [], detalle: { tipo: 'vacio' } };
+  } catch (e) {
+    const esTimeout = e && (e.name === 'TimeoutError' || e.name === 'AbortError');
+    return { resultado: 'error', data: [], detalle: esTimeout ? { tipo: 'timeout' } : { tipo: 'conexion', msg: (e && e.message || '').slice(0, 140) } };
   }
 }
 

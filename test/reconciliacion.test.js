@@ -15,8 +15,8 @@ test('construirReconciliacion arma pendientes y contadores', () => {
     host: 'wv0064', user: 'CE SANTANDER', timEje: 1,
     resultados: [
       { camp: 17798, raw: 100, validos: 90, resultado: 'ok', intentos: 1 },
-      { camp: 17819, raw: 0, validos: 0, resultado: 'vacio', intentos: 3 },
-      { camp: 17820, raw: 0, validos: 0, resultado: 'error', intentos: 3 },
+      { camp: 17819, raw: 0, validos: 0, resultado: 'vacio', intentos: 3, detalle: { tipo: 'vacio' } },
+      { camp: 17820, raw: 0, validos: 0, resultado: 'error', intentos: 3, detalle: { tipo: 'conexion', msg: 'fetch failed' } },
     ],
   }];
   const rec = construirReconciliacion(servidores, { diaHabil: true });
@@ -26,11 +26,11 @@ test('construirReconciliacion arma pendientes y contadores', () => {
   assert.strictEqual(s.conData, 1);
   assert.strictEqual(s.registrosValidos, 90);
   assert.deepStrictEqual(s.pendientes, [{ camp: 17819, resultado: 'vacio' }, { camp: 17820, resultado: 'error' }]);
-  // detalle completo por campaña
+  // detalle completo por campaña (incluye detalle del error)
   assert.deepStrictEqual(s.campanas, [
-    { camp: 17798, validos: 90, raw: 100, resultado: 'ok', intentos: 1 },
-    { camp: 17819, validos: 0, raw: 0, resultado: 'vacio', intentos: 3 },
-    { camp: 17820, validos: 0, raw: 0, resultado: 'error', intentos: 3 },
+    { camp: 17798, validos: 90, raw: 100, resultado: 'ok', intentos: 1, detalle: null },
+    { camp: 17819, validos: 0, raw: 0, resultado: 'vacio', intentos: 3, detalle: { tipo: 'vacio' } },
+    { camp: 17820, validos: 0, raw: 0, resultado: 'error', intentos: 3, detalle: { tipo: 'conexion', msg: 'fetch failed' } },
   ]);
 });
 

@@ -56,3 +56,21 @@ test('intentarCampana clasifica !ok y json.error y excepción como error', async
   const thr = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => { throw new Error('net'); } });
   assert.strictEqual(thr.resultado, 'error');
 });
+
+test('intentarCampana devuelve detalle según la causa', async () => {
+  const http = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => ({ ok:false, status:500 }) });
+  assert.deepStrictEqual(http.detalle, { tipo:'http', status:500 });
+
+  const api = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => ({ ok:true, json: async () => ({ error:'token inválido' }) }) });
+  assert.strictEqual(api.detalle.tipo, 'api');
+  assert.match(api.detalle.msg, /token inválido/);
+
+  const conn = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => { throw new Error('fetch failed'); } });
+  assert.strictEqual(conn.detalle.tipo, 'conexion');
+
+  const to = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => { const e = new Error('t'); e.name = 'TimeoutError'; throw e; } });
+  assert.strictEqual(to.detalle.tipo, 'timeout');
+
+  const vacio = await intentarCampana({ host:'h', token:'t', camp:1, fecha:'20260703', fetchImpl: async () => ({ ok:true, json: async () => ({ data: [] }) }) });
+  assert.deepStrictEqual(vacio.detalle, { tipo:'vacio' });
+});

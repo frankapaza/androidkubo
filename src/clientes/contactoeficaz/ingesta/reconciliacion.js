@@ -10,6 +10,7 @@ function construirReconciliacion(servidores, { diaHabil }) {
       .map(r => ({ camp: r.camp, resultado: r.resultado }));
     const campanas = s.resultados.map(r => ({
       camp: r.camp, validos: r.validos || 0, raw: r.raw || 0, resultado: r.resultado, intentos: r.intentos,
+      detalle: r.detalle || null,
     }));
     return {
       host: s.host, user: s.user, turno: s.timEje,
@@ -61,7 +62,7 @@ function parchearReconciliacion(history, { fecha, host, user, recuperadas }) {
         campanas: Array.isArray(s.campanas) ? s.campanas.map(c => {
           if (!recMap.has(c.camp)) return c;
           const r = recMap.get(c.camp);
-          return { ...c, resultado: 'ok', validos: r.validos || 0, raw: r.raw || 0 };
+          return { ...c, resultado: 'ok', validos: r.validos || 0, raw: r.raw || 0, detalle: null };
         }) : s.campanas,
       };
     });
