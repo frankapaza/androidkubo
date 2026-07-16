@@ -715,6 +715,16 @@ function campEstadoBadge(r){
   if (r === 'vacio') return '<span style="color:#b45309">&#9888; vacío</span>';
   return '<span style="color:#b91c1c">&#9888; error</span>';
 }
+function campDetalleAmigable(c){
+  if (c.resultado === 'ok') return '';
+  var d = c.detalle || {};
+  if (d.tipo === 'http')     return 'La API respondió error HTTP ' + d.status;
+  if (d.tipo === 'timeout')  return 'Tiempo de espera agotado al consultar';
+  if (d.tipo === 'api')      return 'Wolkvox rechazó la consulta: ' + (d.msg || '');
+  if (d.tipo === 'conexion') return 'No se pudo conectar con Wolkvox (caída temporal de la API o red)';
+  if (d.tipo === 'vacio' || c.resultado === 'vacio') return 'Sin llamadas devueltas (posible sin gestiones ese día, o reporte no listo)';
+  return c.resultado === 'error' ? 'Error al consultar (sin detalle)' : '';
+}
 function buildCampanasHtml(servidores){
   if (!servidores || !servidores.length) return '<p style="padding:16px;color:#71707b">Sin detalle por campaña para esta corrida.</p>';
   var partes = servidores.map(function(s){
@@ -726,12 +736,13 @@ function buildCampanasHtml(servidores){
              '<td style="text-align:right">' + (c.validos != null ? c.validos : '—') + '</td>' +
              '<td style="text-align:right">' + (c.raw != null ? c.raw : '—') + '</td>' +
              '<td>' + campEstadoBadge(c.resultado) + '</td>' +
-             '<td style="text-align:right">' + (c.intentos != null ? c.intentos : '—') + '</td></tr>';
+             '<td style="text-align:right">' + (c.intentos != null ? c.intentos : '—') + '</td>' +
+             '<td style="color:#7c5510">' + esc(campDetalleAmigable(c)) + '</td></tr>';
     }).join('');
     return '<div class="camp-srv"><div class="camp-srv-h"><b>' + esc(s.host || '') + '</b> &middot; ' +
            esc(String(s.user || '')) + ' <span style="color:#a1a1aa">' + conData + '/' + camps.length + ' con data</span></div>' +
            '<table class="camp-tabla"><thead><tr><th>Campaña</th><th style="text-align:right">Válidos</th>' +
-           '<th style="text-align:right">Crudas</th><th>Estado</th><th style="text-align:right">Intentos</th></tr></thead>' +
+           '<th style="text-align:right">Crudas</th><th>Estado</th><th style="text-align:right">Intentos</th><th>Detalle</th></tr></thead>' +
            '<tbody>' + filas + '</tbody></table></div>';
   });
   var html = partes.join('');
