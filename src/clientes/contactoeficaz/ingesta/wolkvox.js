@@ -9,6 +9,7 @@ const { createPool, limpiarTmpGestiones,
         dedupGestionesVarios }       = require('../../../shared/ingesta/mcob');
 const { intentarCampana, fetchCampanaConReintento, sleep } = require('../../../shared/ingesta/wolkvox-fetch');
 const { construirReconciliacion, calcularStatus, esDiaHabilLima, parchearReconciliacion } = require('./reconciliacion');
+const { acquireLock }                = require('../../../shared/ingesta/lock');
 const { notificarEjecucion }         = require('../../../shared/ingesta/notificar');
 
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './descargas');
@@ -16,6 +17,10 @@ const KEY_CRYPT     = process.env.KEY_CRYPT;
 const MAX_REINTENTOS   = parseInt(process.env.WOLKVOX_MAX_REINTENTOS || '2', 10);
 const BACKOFF_MS       = parseInt(process.env.WOLKVOX_BACKOFF_MS || '1500', 10);
 const FETCH_TIMEOUT_MS = parseInt(process.env.WOLKVOX_FETCH_TIMEOUT_MS || '20000', 10);
+const LOCK_PATH        = path.join(DOWNLOADS_DIR, 'wolkvox.lock');
+const LOCK_TTL_MS      = parseInt(process.env.WOLKVOX_LOCK_TTL_MS || '1200000', 10);   // 20 min
+const LOCK_WAIT_MS     = parseInt(process.env.WOLKVOX_LOCK_WAIT_MS || '900000', 10);   // 15 min
+const LOCK_POLL_MS     = parseInt(process.env.WOLKVOX_LOCK_POLL_MS || '5000', 10);
 
 // ─── Tiempo Lima ────────────────────────────────────────────────────────────
 
@@ -194,7 +199,7 @@ async function ejecutarDirigido(pool, { host, user, camps, fecha }) {
   process.stdout.write(`\n${JSON.stringify(resumen)}\n`);
 }
 
-async function main() {
+async function ejecutar() {
   // Rama dirigida (botón del panel): procesa solo un servidor + campañas dadas y sale.
   const onlyHost  = process.env.WOLKVOX_ONLY_HOST;
   const onlyUser  = process.env.WOLKVOX_ONLY_USER;
@@ -216,7 +221,7 @@ async function main() {
     } finally {
       try { await poolD.close(); } catch {}
     }
-    process.exit(code);
+    return code;
   }
 
   const t0 = Date.now();
@@ -366,11 +371,33 @@ async function main() {
     process.stdout.write(`\n${JSON.stringify(estado)}\n`);
   }
 
-  process.exit(estado.status === 'ok' ? 0 : 1);
+  return estado.status === 'ok' ? 0 : 1;
+}
+
+// Envuelve la ejecución en el candado: una sola corrida de Wolkvox a la vez.
+// Si hay otra en curso, ESPERA su turno (encola) hasta LOCK_WAIT_MS.
+async function main() {
+  const dirigido = !!(process.env.WOLKVOX_ONLY_HOST && process.env.WOLKVOX_ONLY_USER &&
+                      process.env.WOLKVOX_ONLY_CAMPS && process.env.WOLKVOX_FECHA);
+  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+  console.log(`[wolkvox] esperando candado (${dirigido ? 'dirigido' : 'normal'})...`);
+  const release = await acquireLock({
+    lockPath: LOCK_PATH, ttlMs: LOCK_TTL_MS, pollMs: LOCK_POLL_MS, maxWaitMs: LOCK_WAIT_MS,
+    mode: dirigido ? 'dirigido' : 'normal',
+    label: dirigido ? process.env.WOLKVOX_ONLY_HOST : 'programada',
+  });
+  console.log('[wolkvox] candado tomado — iniciando');
+  let code = 0;
+  try {
+    code = await ejecutar();
+  } finally {
+    try { release(); } catch {}
+  }
+  process.exit(code);
 }
 
 if (require.main === module) {
   main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 }
 
-module.exports = { main };
+module.exports = { main, ejecutar };
