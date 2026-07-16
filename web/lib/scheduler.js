@@ -5,10 +5,13 @@ const path = require('path');
 const clients = require('./clients');
 const envLib = require('./env');
 const botStatus = require('./bot-status');
+const { extraerErrorPendientes, fechaReporteToYyyymmdd } = require('../../src/clientes/contactoeficaz/ingesta/auto-retry');
 
 const ROOT = path.resolve(__dirname, '../..');
 const TIMEZONE = 'America/Lima';
 const SKIP_FILE = path.join(ROOT, 'descargas/skip_schedule.json');
+const RETRY_INTERVAL_MS = parseInt(process.env.WOLKVOX_RETRY_INTERVAL_MS || '600000', 10); // 10 min
+const RETRY_MAX = parseInt(process.env.WOLKVOX_RETRY_MAX || '3', 10);
 
 let activeTasks = [];
 
@@ -55,16 +58,74 @@ function parseCron(timeStr) {
   return `${min} ${h} * * *`;
 }
 
+function parseUltimoJson(texto) {
+  const lines = String(texto || '').trim().split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line.startsWith('{') && line.endsWith('}')) { try { return JSON.parse(line); } catch {} }
+  }
+  return null;
+}
+
+// Lanza el modo dirigido de wolkvox y resuelve con el resumen ({recuperadas, aunPendientes}).
+function spawnDirigido(host, user, camps, fecha) {
+  return new Promise(resolve => {
+    const scriptPath = clients.contactoeficaz.automations.wolkvox.script;
+    const proc = spawn('node', [scriptPath], {
+      env: {
+        ...process.env, ...envLib.read(),
+        WOLKVOX_ONLY_HOST: host, WOLKVOX_ONLY_USER: user,
+        WOLKVOX_ONLY_CAMPS: camps.join(','), WOLKVOX_FECHA: fecha,
+      },
+      cwd: ROOT,
+    });
+    let out = '';
+    proc.stdout.on('data', d => { out += d.toString(); process.stdout.write(d); });
+    proc.stderr.on('data', d => process.stderr.write(d));
+    proc.on('close', () => resolve(parseUltimoJson(out)));
+    proc.on('error', () => resolve(null));
+  });
+}
+
+// Reintento automático de campañas en 'error': cada RETRY_INTERVAL_MS, hasta RETRY_MAX veces.
+function programarReintentos(fechaReporte, servidores, intento) {
+  const fecha = fechaReporteToYyyymmdd(fechaReporte);
+  if (!fecha) return;
+  console.log(`[scheduler] wolkvox: reintento auto ${intento}/${RETRY_MAX} en ${Math.round(RETRY_INTERVAL_MS / 60000)} min para ${servidores.length} servidor(es)`);
+  setTimeout(async () => {
+    if (!botStatus.isEnabled('wolkvox')) { console.log('[scheduler] wolkvox: reintento auto omitido — bot inactivo'); return; }
+    const sigue = [];
+    for (const s of servidores) {
+      console.log(`[scheduler] wolkvox: reintentando ${s.host} (${s.user}) — ${s.camps.length} campañas`);
+      const resumen = await spawnDirigido(s.host, s.user, s.camps, fecha);
+      const aun = ((resumen && resumen.aunPendientes) || []).filter(p => p.resultado === 'error').map(p => p.camp);
+      if (aun.length) sigue.push({ host: s.host, user: s.user, camps: aun });
+    }
+    if (sigue.length && intento < RETRY_MAX) programarReintentos(fechaReporte, sigue, intento + 1);
+    else if (sigue.length) console.log(`[scheduler] wolkvox: ${sigue.length} servidor(es) siguen con error tras ${RETRY_MAX} reintentos — quedan para reintento manual`);
+    else console.log('[scheduler] wolkvox: reintentos automáticos recuperaron todos los errores');
+  }, RETRY_INTERVAL_MS);
+}
+
 function runScript(clientId, autoId, scriptPath) {
   console.log(`[scheduler] Iniciando ${clientId}/${autoId}`);
   const proc = spawn('node', [scriptPath], {
     env: { ...process.env, ...envLib.read() },
     cwd: ROOT,
   });
-  proc.stdout.on('data', d => process.stdout.write(d));
+  let stdout = '';
+  proc.stdout.on('data', d => { stdout += d.toString(); process.stdout.write(d); });
   proc.stderr.on('data', d => process.stderr.write(d));
   proc.on('close', code => {
     console.log(`[scheduler] ${clientId}/${autoId} finalizado (código ${code})`);
+    // Reintento automático solo para corridas programadas de wolkvox con campañas en 'error'.
+    if (autoId === 'wolkvox' && RETRY_MAX > 0) {
+      const estado = parseUltimoJson(stdout);
+      if (estado && estado.reconciliacion && estado.fechaReporte) {
+        const pend = extraerErrorPendientes(estado);
+        if (pend.length) programarReintentos(estado.fechaReporte, pend, 1);
+      }
+    }
   });
   proc.on('error', err => {
     console.error(`[scheduler] Error lanzando ${clientId}/${autoId}:`, err.message);
