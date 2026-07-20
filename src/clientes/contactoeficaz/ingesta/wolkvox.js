@@ -52,6 +52,7 @@ const HOMOLOGACION = {
   'ANSWER-MACHINE': { tipResSi: 46, tipSolSi: 0 },
   'BUSY':           { tipResSi: 47, tipSolSi: 0 },
   'NO-ANSWER':      { tipResSi: 47, tipSolSi: 0 },
+  'CONGESTION':     { tipResSi: 47, tipSolSi: 0 },   // congestión de red = no-contacto (NO CONTESTA)
 };
 
 // ─── API Wolkvox ─────────────────────────────────────────────────────────────
@@ -407,4 +408,4 @@ if (require.main === module) {
   main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 }
 
-module.exports = { main, ejecutar, normalizarTelefono };
+module.exports = { main, ejecutar, normalizarTelefono, HOMOLOGACION };
