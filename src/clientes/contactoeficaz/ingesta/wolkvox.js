@@ -180,6 +180,13 @@ async function ejecutarDirigido(pool, { host, user, camps, fecha }) {
     await limpiarTmpGestiones(pool);
     await bulkRegistrarTmpGestiones(pool, dedup);
     await registrarGestiones(pool);
+    // El SP de carga puede generar filas duplicadas; en el flujo normal las limpia el
+    // dedup de la mañana. El modo dirigido debe hacerlo también, si no cada reintento duplica.
+    const fechaDisplay = `${fecha.slice(6,8)}/${fecha.slice(4,6)}/${fecha.slice(0,4)}`;
+    try {
+      const inact = await dedupGestionesVarios(pool, fechaDisplay);
+      if (inact > 0) console.log(`[wolkvox] dirigido dedup: ${inact} duplicados inactivados (${fechaDisplay})`);
+    } catch (e) { console.error(`[wolkvox] dirigido dedup falló: ${e.message}`); }
   }
 
   // Parchear la reconciliación persistida (history + last_run si aplica)
