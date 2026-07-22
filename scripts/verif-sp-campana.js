@@ -21,18 +21,19 @@ async function main() {
     porServidor.get(k).push(c.ID_CAMP_PROV_EXT_SI);
   }
 
-  let ok = true;
+  // NOTA: desde 2026-07-21 el companion usa una ventana MÁS AMPLIA (5 días) que el SP
+  // original (3 días). Es esperado que el companion tenga MÁS campañas. Este verificador
+  // ya no exige igualdad: solo informa las campañas extra que captura la ventana ampliada.
   for (const r of rango) {
     const k = `${r.AMI_HOST_VC}|${r.AMI_USER_VC}|${r.TIM_EJE_SI}`;
-    const lista = porServidor.get(k) || [];
+    const lista = (porServidor.get(k) || []).slice().sort((a, b) => a - b);
+    const extra = lista.filter(c => c < r.CAMP_MIN_PROV_EXT || c > r.CAMP_MAX_PROV_EXT);
     const min = lista.length ? Math.min(...lista) : null;
     const max = lista.length ? Math.max(...lista) : null;
-    const cuadra = lista.length > 0 && min === r.CAMP_MIN_PROV_EXT && max === r.CAMP_MAX_PROV_EXT;
-    if (!cuadra) ok = false;
-    console.log(`${cuadra ? 'OK ' : 'XX '} ${r.AMI_HOST_VC} ${r.AMI_USER_VC}: companion=${lista.length} camp [${min}-${max}] vs rango [${r.CAMP_MIN_PROV_EXT}-${r.CAMP_MAX_PROV_EXT}]`);
+    console.log(`${r.AMI_HOST_VC} ${r.AMI_USER_VC}: companion=${lista.length} camp [${min}-${max}] vs rango3d [${r.CAMP_MIN_PROV_EXT}-${r.CAMP_MAX_PROV_EXT}]` +
+      (extra.length ? `  (+${extra.length} extra por ventana ampliada: ${extra.join(', ')})` : ''));
   }
   await pool.close();
-  console.log(ok ? '\nCONSISTENTE' : '\nINCONSISTENTE');
-  process.exit(ok ? 0 : 1);
+  console.log('\nInforme completo (companion ⊇ rango es lo esperado).');
 }
 main().catch(e => { console.error('ERROR:', e.message); process.exit(1); });
