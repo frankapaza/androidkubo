@@ -17,6 +17,10 @@ const KEY_CRYPT     = process.env.KEY_CRYPT;
 const MAX_REINTENTOS   = parseInt(process.env.WOLKVOX_MAX_REINTENTOS || '2', 10);
 const BACKOFF_MS       = parseInt(process.env.WOLKVOX_BACKOFF_MS || '1500', 10);
 const FETCH_TIMEOUT_MS = parseInt(process.env.WOLKVOX_FETCH_TIMEOUT_MS || '20000', 10);
+// Pausa entre peticiones por servidor: Wolkvox limita a 2 requests simultáneos por token.
+// Sin pausa, los "jobs" de reporte se solapan y devuelve 403 "Exceeds the limit of
+// simultaneous requests per token (2)". Con la pausa cada job se libera antes del siguiente.
+const THROTTLE_MS = parseInt(process.env.WOLKVOX_THROTTLE_MS || '700', 10);
 const LOCK_PATH        = path.join(DOWNLOADS_DIR, 'wolkvox.lock');
 const LOCK_TTL_MS      = parseInt(process.env.WOLKVOX_LOCK_TTL_MS || '1200000', 10);   // 20 min
 const LOCK_WAIT_MS     = parseInt(process.env.WOLKVOX_LOCK_WAIT_MS || '900000', 10);   // 15 min
@@ -158,7 +162,10 @@ async function ejecutarDirigido(pool, { host, user, camps, fecha }) {
   }
 
   const registros = [];
+  let primera = true;
   for (const camp of camps) {
+    if (!primera && THROTTLE_MS > 0) await sleep(THROTTLE_MS); // límite 2 requests/token
+    primera = false;
     const { data, resultado } = await fetchCampanaConReintento({
       intentar: () => intentarCampana({ host, token, camp, fecha, timeoutMs: FETCH_TIMEOUT_MS }),
       maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
@@ -289,8 +296,11 @@ async function ejecutar() {
       console.log(`[wolkvox] servidor: ${srv.host} (${srv.user}) — ${srv.campanas.length} campañas`);
 
       const resultados = [];
+      let primeraCamp = true;
       for (const camp of srv.campanas) {
         estado.totalCampanas++;
+        if (!primeraCamp && THROTTLE_MS > 0) await sleep(THROTTLE_MS); // no saturar el límite de 2/token
+        primeraCamp = false;
         const { data, resultado, intentos, detalle } = await fetchCampanaConReintento({
           intentar: () => intentarCampana({ host: srv.host, token: srv.token, camp, fecha, timeoutMs: FETCH_TIMEOUT_MS }),
           maxReintentos: MAX_REINTENTOS, backoffMs: BACKOFF_MS, dormir: sleep,
