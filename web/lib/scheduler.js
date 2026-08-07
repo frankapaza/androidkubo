@@ -12,6 +12,9 @@ const TIMEZONE = 'America/Lima';
 const SKIP_FILE = path.join(ROOT, 'descargas/skip_schedule.json');
 const RETRY_INTERVAL_MS = parseInt(process.env.WOLKVOX_RETRY_INTERVAL_MS || '600000', 10); // 10 min
 const RETRY_MAX = parseInt(process.env.WOLKVOX_RETRY_MAX || '3', 10);
+// Segundo nivel: si tras los reintentos rápidos aún quedan errores, reintentar a estas horas (Lima).
+const RETRY_HORAS = (process.env.WOLKVOX_RETRY_HORAS || '2,3')
+  .split(',').map(s => parseInt(s.trim(), 10)).filter(h => h >= 0 && h <= 23);
 
 let activeTasks = [];
 
@@ -87,6 +90,46 @@ function spawnDirigido(host, user, camps, fecha) {
   });
 }
 
+// ms desde una hora actual (H:M:S) hasta la próxima ocurrencia de horaObjetivo:00. Función pura (testeable).
+function msHastaHora(hActual, mActual, sActual, horaObjetivo) {
+  let diffSeg = horaObjetivo * 3600 - (hActual * 3600 + mActual * 60 + sActual);
+  if (diffSeg <= 0) diffSeg += 24 * 3600; // ya pasó hoy → mañana
+  return diffSeg * 1000;
+}
+
+function msHastaHoraLima(horaObjetivo) {
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE, hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).format(new Date());
+  const [h, m, s] = p.split(':').map(Number);
+  return msHastaHora(h, m, s, horaObjetivo);
+}
+
+// Segundo nivel de reintento: a horas fijas (RETRY_HORAS, ej. 2am y 3am Lima).
+function programarReintentosHorarios(fechaReporte, servidores, horas, idx) {
+  if (idx >= horas.length) {
+    console.log(`[scheduler] wolkvox: agotados los reintentos horarios; ${servidores.length} servidor(es) quedan para reintento manual`);
+    return;
+  }
+  const fecha = fechaReporteToYyyymmdd(fechaReporte);
+  if (!fecha) return;
+  const hora = horas[idx];
+  const ms = msHastaHoraLima(hora);
+  console.log(`[scheduler] wolkvox: reintento horario ${hora}:00 (en ${Math.round(ms / 60000)} min) para ${servidores.length} servidor(es)`);
+  setTimeout(async () => {
+    if (!botStatus.isEnabled('wolkvox')) { console.log('[scheduler] wolkvox: reintento horario omitido — bot inactivo'); return; }
+    const sigue = [];
+    for (const s of servidores) {
+      console.log(`[scheduler] wolkvox: reintento ${hora}:00 — ${s.host} (${s.user}) — ${s.camps.length} campañas`);
+      const resumen = await spawnDirigido(s.host, s.user, s.camps, fecha);
+      const aun = ((resumen && resumen.aunPendientes) || []).filter(p => p.resultado === 'error').map(p => p.camp);
+      if (aun.length) sigue.push({ host: s.host, user: s.user, camps: aun });
+    }
+    if (sigue.length) programarReintentosHorarios(fechaReporte, sigue, horas, idx + 1);
+    else console.log(`[scheduler] wolkvox: reintento ${hora}:00 recuperó todo lo pendiente`);
+  }, ms);
+}
+
 // Reintento automático de campañas en 'error': cada RETRY_INTERVAL_MS, hasta RETRY_MAX veces.
 function programarReintentos(fechaReporte, servidores, intento) {
   const fecha = fechaReporteToYyyymmdd(fechaReporte);
@@ -102,7 +145,11 @@ function programarReintentos(fechaReporte, servidores, intento) {
       if (aun.length) sigue.push({ host: s.host, user: s.user, camps: aun });
     }
     if (sigue.length && intento < RETRY_MAX) programarReintentos(fechaReporte, sigue, intento + 1);
-    else if (sigue.length) console.log(`[scheduler] wolkvox: ${sigue.length} servidor(es) siguen con error tras ${RETRY_MAX} reintentos — quedan para reintento manual`);
+    else if (sigue.length) {
+      console.log(`[scheduler] wolkvox: ${sigue.length} servidor(es) siguen con error tras ${RETRY_MAX} reintentos rápidos`);
+      if (RETRY_HORAS.length) programarReintentosHorarios(fechaReporte, sigue, RETRY_HORAS, 0);
+      else console.log('[scheduler] wolkvox: sin reintentos horarios configurados — quedan para reintento manual');
+    }
     else console.log('[scheduler] wolkvox: reintentos automáticos recuperaron todos los errores');
   }, RETRY_INTERVAL_MS);
 }
@@ -184,4 +231,4 @@ function status() {
   return activeTasks.map(({ clientId, autoId, time }) => ({ clientId, autoId, time }));
 }
 
-module.exports = { start, stop, status, markSkipToday, shouldSkipToday, clearSkip };
+module.exports = { start, stop, status, markSkipToday, shouldSkipToday, clearSkip, msHastaHora };
