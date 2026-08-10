@@ -13,7 +13,9 @@ const SKIP_FILE = path.join(ROOT, 'descargas/skip_schedule.json');
 const RETRY_INTERVAL_MS = parseInt(process.env.WOLKVOX_RETRY_INTERVAL_MS || '600000', 10); // 10 min
 const RETRY_MAX = parseInt(process.env.WOLKVOX_RETRY_MAX || '3', 10);
 // Segundo nivel: si tras los reintentos rápidos aún quedan errores, reintentar a estas horas (Lima).
-const RETRY_HORAS = (process.env.WOLKVOX_RETRY_HORAS || '2,3')
+// 2am/3am dan margen; 7am es el decisivo — de noche los tokens del proveedor suelen estar saturados
+// y se liberan en la mañana, así que el reintento de 7am es el que normalmente recupera wv0064.
+const RETRY_HORAS = (process.env.WOLKVOX_RETRY_HORAS || '2,3,7')
   .split(',').map(s => parseInt(s.trim(), 10)).filter(h => h >= 0 && h <= 23);
 
 let activeTasks = [];
