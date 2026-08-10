@@ -330,7 +330,10 @@ async function ejecutar() {
     estado.tamaño = `${registrosDedup.length} registros válidos`;
     console.log(`[wolkvox] registros válidos: ${registrosDedup.length} / ${estado.totalRegistros}`);
 
-    const diaHabil = esDiaHabilLima();
+    // Día hábil se evalúa sobre la fecha PROCESADA (ayer en tipo=1), no sobre el día de ejecución.
+    // Si no, una corrida de sábado que procesa el viernes suprime pendientes reales del viernes.
+    const fechaProcesada = new Date(`${fecha.slice(0,4)}-${fecha.slice(4,6)}-${fecha.slice(6,8)}T12:00:00Z`);
+    const diaHabil = esDiaHabilLima(fechaProcesada);
     estado.reconciliacion = construirReconciliacion(reconServidores, { diaHabil });
 
     if (process.env.WOLKVOX_DRY_INGESTA === 'true') {
