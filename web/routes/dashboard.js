@@ -158,6 +158,43 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun-server', req
   proc.on('error', err => { if (!res.headersSent) res.status(500).json({ error: err.message }); });
 });
 
+// POST /api/clients/:clientId/automations/:automationId/rerun-ipb-server
+// Modo dirigido IPBusiness: re-descarga y registra un solo servidor para una fecha.
+router.post('/api/clients/:clientId/automations/:automationId/rerun-ipb-server', requireAuth, (req, res) => {
+  const automation = getAutomation(req, res);
+  if (!automation) return;
+  if (req.params.automationId !== 'ipbusiness') {
+    return res.status(400).json({ error: 'Solo disponible para ipbusiness' });
+  }
+  if (!botStatus.isEnabled(req.params.automationId)) {
+    return res.status(403).json({ error: 'Bot inactivo. Actívalo primero desde el dashboard.' });
+  }
+  const errMsg = validarRerunIpbBody(req.body);
+  if (errMsg) return res.status(400).json({ error: errMsg });
+
+  const { host, fecha } = req.body;
+  req.socket.setTimeout(20 * 60 * 1000);
+
+  const proc = spawn('node', [automation.script], {
+    env: { ...process.env, IPB_ONLY_HOST: host, IPB_FECHA: fecha },
+    cwd: ROOT,
+  });
+
+  let stdout = '', stderr = '';
+  proc.stdout.on('data', d => { stdout += d.toString(); });
+  proc.stderr.on('data', d => { stderr += d.toString(); });
+  proc.on('close', code => {
+    let summary = null;
+    const lines = stdout.trim().split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (line.startsWith('{') && line.endsWith('}')) { try { summary = JSON.parse(line); break; } catch {} }
+    }
+    res.json({ exitCode: code, summary, stderr: stderr.slice(-1000) });
+  });
+  proc.on('error', err => { if (!res.headersSent) res.status(500).json({ error: err.message }); });
+});
+
 // GET /api/mfa/mibanco — estado actual del challenge MFA
 router.get('/api/mfa/mibanco', requireAuth, (req, res) => {
   res.json(mfaLib.readState() || { status: 'idle' });
@@ -248,5 +285,14 @@ function validarRerunServerBody(body) {
   return null;
 }
 
+function validarRerunIpbBody(body) {
+  if (!body || typeof body !== 'object') return 'Body inválido';
+  const { host, fecha } = body;
+  if (!host || typeof host !== 'string' || !/^[\w.-]+(:\d+)?$/.test(host)) return 'host inválido';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) return 'fecha debe ser yyyy-MM-dd';
+  return null;
+}
+
 module.exports = router;
 module.exports.validarRerunServerBody = validarRerunServerBody;
+module.exports.validarRerunIpbBody = validarRerunIpbBody;

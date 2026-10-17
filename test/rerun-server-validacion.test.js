@@ -15,3 +15,11 @@ test('rechaza campaigns vacío o no entero', () => {
 test('rechaza host/user faltantes', () => {
   assert.match(validarRerunServerBody({ user:'u', fecha:'20260703', campaigns:[1] }), /host/);
 });
+
+const { validarRerunIpbBody } = require('../web/routes/dashboard');
+
+test('IPB: body válido y rechazos', () => {
+  assert.strictEqual(validarRerunIpbBody({ host:'ce3.ipb.pe', fecha:'2026-10-16' }), null);
+  assert.match(validarRerunIpbBody({ host:'ce3.ipb.pe', fecha:'20261016' }), /fecha/);
+  assert.match(validarRerunIpbBody({ host:"x'); alert(1);//", fecha:'2026-10-16' }), /host/);
+});

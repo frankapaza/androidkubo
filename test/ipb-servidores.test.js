@@ -1,0 +1,51 @@
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { hostDe, resumirServidores, parchearServidor } = require('../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+
+test('hostDe extrae el host de la URL (sin token del path)', () => {
+  assert.strictEqual(hostDe('https://ce3.ipb.pe/gen_cdripb_json/abc.php'), 'ce3.ipb.pe');
+  assert.strictEqual(hostDe('no-es-url'), 'no-es-url');
+});
+
+const srvs = [
+  { host: 'ce3.ipb.pe', resultado: 'ok',    raw: 100, validos: 98 },
+  { host: 'ce6.ipb.pe', resultado: 'error', raw: 0,   validos: 0, error: 'HTTP 403' },
+  { host: 'ce7.ipb.pe', resultado: 'vacio', raw: 0,   validos: 0 },
+];
+
+test('resumirServidores suma totales y marca error si algún servidor falló', () => {
+  const r = resumirServidores(srvs);
+  assert.strictEqual(r.totalRegistros, 100);
+  assert.strictEqual(r.registrosValidos, 98);
+  assert.strictEqual(r.status, 'error');
+  assert.match(r.error, /1 de 3/);
+  assert.match(r.error, /ce6\.ipb\.pe/);
+});
+
+test('resumirServidores: vacío no es error', () => {
+  const r = resumirServidores([srvs[0], srvs[2]]);
+  assert.strictEqual(r.status, 'ok');
+  assert.strictEqual(r.error, null);
+});
+
+test('parchearServidor reemplaza el servidor en la corrida de esa fecha y recalcula', () => {
+  const hist = [
+    { fechaReporte: '2026-10-16', status: 'error', servidores: srvs.map(s => ({ ...s })) },
+    { fechaReporte: '2026-10-15', status: 'ok', servidores: [] },
+  ];
+  const nuevo = { host: 'ce6.ipb.pe', resultado: 'ok', raw: 50, validos: 50 };
+  const { history, patched } = parchearServidor(hist, { fechaReporte: '2026-10-16', servidor: nuevo });
+  assert.strictEqual(patched, true);
+  const e = history[0];
+  assert.strictEqual(e.status, 'ok');
+  assert.strictEqual(e.registrosValidos, 148);
+  assert.strictEqual(e.totalRegistros, 150);
+  assert.strictEqual(e.tamaño, '148 registros válidos');
+  assert.strictEqual(e.servidores.find(s => s.host === 'ce6.ipb.pe').reintentado, true);
+});
+
+test('parchearServidor no toca nada si no hay corrida para esa fecha', () => {
+  const { patched } = parchearServidor([{ fechaReporte: '2026-10-15', servidores: [] }],
+    { fechaReporte: '2026-10-16', servidor: { host: 'x' } });
+  assert.strictEqual(patched, false);
+});

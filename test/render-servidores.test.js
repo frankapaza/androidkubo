@@ -32,3 +32,21 @@ test('cada servidor con campanas tiene botón ver-detalle con data-campanas', ()
 test('sin reconciliación devuelve string vacío', () => {
   assert.strictEqual(renderServidoresTabla(null, { clientId:'c', autoId:'wolkvox', fecha:'20260703' }), '');
 });
+
+const { renderIpbServidoresTabla } = require('../web/views/dashboard');
+
+test('IPB: fila por servidor, botón Reintentar solo en error/vacío', () => {
+  const html = renderIpbServidoresTabla([
+    { host:'ce3.ipb.pe', resultado:'ok',    raw:100, validos:98 },
+    { host:'ce6.ipb.pe', resultado:'error', raw:0,   validos:0, error:'HTTP 403' },
+    { host:'ce7.ipb.pe', resultado:'vacio', raw:0,   validos:0 },
+  ], { clientId:'contactoeficaz', autoId:'ipbusiness', fecha:'2026-10-16' });
+  assert.match(html, /ce3\.ipb\.pe/);
+  assert.match(html, /HTTP 403/);
+  assert.strictEqual((html.match(/rerunIpbServer\(/g) || []).length, 2);
+  assert.match(html, /'ce6\.ipb\.pe','2026-10-16'/);
+});
+
+test('IPB: sin detalle por servidor (corridas antiguas) no renderiza tabla', () => {
+  assert.strictEqual(renderIpbServidoresTabla(undefined, {}), '');
+});

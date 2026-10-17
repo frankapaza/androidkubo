@@ -131,6 +131,9 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
       clientId, autoId,
       fecha: (lastRun.fechaReporte || '').split('/').reverse().join(''), // DD/MM/YYYY -> YYYYMMDD
     }) : ''}
+    ${autoId === 'ipbusiness' ? renderIpbServidoresTabla(lastRun.servidores, {
+      clientId, autoId, fecha: lastRun.fechaReporte || '', // yyyy-MM-dd
+    }) : ''}
     ${(() => {
       const url = screenshotUrl(lastRun.screenshot);
       if (!url) return '';
@@ -710,6 +713,25 @@ async function rerunServer(clientId, autoId, host, user, fecha, campsCsv, btn) {
   } catch (e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = txt; }
 }
 
+async function rerunIpbServer(clientId, autoId, host, fecha, btn) {
+  if (!confirm('¿Reintentar ' + host + ' para ' + fecha + '? Los registros duplicados se inactivan automáticamente.')) return;
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Reintentando…';
+  try {
+    const r = await fetch('/api/clients/'+clientId+'/automations/'+autoId+'/rerun-ipb-server', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: host, fecha: fecha }),
+    });
+    const j = await r.json();
+    if (!r.ok) { alert('Error: ' + (j.error || r.status)); btn.disabled = false; btn.textContent = txt; return; }
+    const s = j.summary || {};
+    const srv = s.servidor || {};
+    alert(s.status === 'ok'
+      ? host + ': ' + (srv.validos || 0) + ' registros válidos registrados. Actualizando…'
+      : host + ' sigue con error: ' + (s.error || 'desconocido'));
+    location.reload();
+  } catch (e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = txt; }
+}
+
 function campEstadoBadge(r){
   if (r === 'ok') return '<span style="color:#15803d">ok</span>';
   if (r === 'vacio') return '<span style="color:#b45309">&#9888; vacío</span>';
@@ -1037,4 +1059,31 @@ function renderServidoresTabla(reconciliacion, ctx) {
     <tbody>${filas}</tbody></table>`;
 }
 
-module.exports = { renderDashboard, renderServidoresTabla };
+// Tabla por servidor de IPBusiness con botón "Reintentar" en los que fallaron o vinieron vacíos.
+function renderIpbServidoresTabla(servidores, ctx) {
+  if (!Array.isArray(servidores) || !servidores.length) return '';
+  const filas = servidores.map(s => {
+    const estadoCell = s.resultado === 'ok'
+      ? `<span style="color:#15803d">OK</span>`
+      : s.resultado === 'vacio'
+        ? `<span style="color:#b45309;font-weight:600">⚠ Sin datos</span>`
+        : `<span style="color:#b91c1c;font-weight:600" title="${esc(s.error || '')}">✕ Error</span>
+           <div style="color:#b91c1c;font-size:11px">${esc(s.error || '')}</div>`;
+    const boton = s.resultado !== 'ok'
+      ? `<button type="button" class="btn-rerun-srv"
+           onclick="rerunIpbServer('${esc(ctx.clientId)}','${esc(ctx.autoId)}','${esc(s.host)}','${esc(ctx.fecha)}',this)">
+           Reintentar</button>`
+      : '';
+    return `<tr>
+      <td>${esc(s.host)}${s.reintentado ? ' <span title="Reintentado" style="color:#71707b">↻</span>' : ''}</td>
+      <td>${esc(String(s.raw ?? 0))}</td>
+      <td>${esc(String(s.validos ?? 0))}</td>
+      <td>${estadoCell} ${boton}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="srv-tabla">
+    <thead><tr><th>Servidor</th><th>Recibidos</th><th>Válidos</th><th>Estado</th></tr></thead>
+    <tbody>${filas}</tbody></table>`;
+}
+
+module.exports = { renderDashboard, renderServidoresTabla, renderIpbServidoresTabla };

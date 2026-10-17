@@ -4,11 +4,27 @@ const path = require('path');
 const { decryptTripleDES }           = require('../../../shared/ingesta/crypto');
 const { createPool, limpiarTmpGestiones,
         bulkRegistrarTmpGestiones,
-        registrarGestiones }         = require('../../../shared/ingesta/mcob');
+        registrarGestiones,
+        dedupGestionesVarios }       = require('../../../shared/ingesta/mcob');
 const { notificarEjecucion }         = require('../../../shared/ingesta/notificar');
+const { acquireLock }                = require('../../../shared/ingesta/lock');
+const { hostDe, resumirServidores, parchearServidor } = require('./ipb-servidores');
 
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './descargas');
 const KEY_CRYPT     = process.env.KEY_CRYPT;
+const FETCH_TIMEOUT_MS = parseInt(process.env.IPB_FETCH_TIMEOUT_MS || '120000', 10); // 2 min por servidor
+const MAX_REINTENTOS   = parseInt(process.env.IPB_MAX_REINTENTOS || '2', 10);
+const BACKOFF_MS       = parseInt(process.env.IPB_BACKOFF_MS || '3000', 10);
+// Mismo candado que Wolkvox: ambos limpian/cargan CARGA.TMP_GESTION y no pueden solaparse.
+const LOCK_PATH    = path.join(DOWNLOADS_DIR, 'wolkvox.lock');
+const LOCK_TTL_MS  = parseInt(process.env.WOLKVOX_LOCK_TTL_MS || '1200000', 10);
+const LOCK_WAIT_MS = parseInt(process.env.WOLKVOX_LOCK_WAIT_MS || '900000', 10);
+const LOCK_POLL_MS = parseInt(process.env.WOLKVOX_LOCK_POLL_MS || '5000', 10);
+
+const LAST_FILE = path.join(DOWNLOADS_DIR, 'last_run_ipbusiness.json');
+const HIST_FILE = path.join(DOWNLOADS_DIR, 'history_ipbusiness.json');
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ─── Fecha ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +32,12 @@ function getFecha(override) {
   if (override) return override;
   // API espera yyyy-MM-dd
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+}
+
+// yyyy-MM-dd → dd/MM/yyyy (formato que espera dedupGestionesVarios)
+function fechaDDMMYYYY(fecha) {
+  const [y, m, d] = fecha.split('-');
+  return `${d}/${m}/${y}`;
 }
 
 // ─── URLs (soporta una o varias separadas por coma) ───────────────────────────
@@ -30,10 +52,42 @@ function getUrls() {
 // ─── API IPBusiness ───────────────────────────────────────────────────────────
 
 async function listarLlamadas(url, fecha) {
-  const fullUrl = `${url}?f=${fecha}`;
-  const res = await fetch(fullUrl);
-  if (!res.ok) throw new Error(`HTTP ${res.status} en ${fullUrl}`);
-  return res.json(); // Array<EntidadIPB>
+  const res = await fetch(`${url}?f=${fecha}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error('respuesta no es un arreglo JSON');
+  return data; // Array<EntidadIPB>
+}
+
+// Descarga un servidor con reintentos. Nunca lanza: devuelve el detalle del servidor
+// (sin la URL, que lleva token) y los registros válidos parseados.
+async function procesarServidor(url, fecha) {
+  const host = hostDe(url);
+  let ultimoError = null;
+  for (let intento = 1; intento <= MAX_REINTENTOS + 1; intento++) {
+    try {
+      const llamadas = await listarLlamadas(url, fecha);
+      const registros = [];
+      for (const item of llamadas) {
+        const reg = parsearLlamada(item);
+        if (reg) registros.push(reg);
+      }
+      console.log(`[ipbusiness] ${host} → ${llamadas.length} registros (${registros.length} válidos)`);
+      return {
+        detalle: { host, resultado: llamadas.length ? 'ok' : 'vacio', raw: llamadas.length,
+                   validos: registros.length, intentos: intento, error: null },
+        registros,
+      };
+    } catch (err) {
+      ultimoError = err.name === 'TimeoutError' ? `timeout ${FETCH_TIMEOUT_MS / 1000}s` : err.message;
+      console.error(`[ipbusiness] ${host} intento ${intento} error: ${ultimoError}`);
+      if (intento <= MAX_REINTENTOS) await sleep(BACKOFF_MS * intento);
+    }
+  }
+  return {
+    detalle: { host, resultado: 'error', raw: 0, validos: 0, intentos: MAX_REINTENTOS + 1, error: ultimoError },
+    registros: [],
+  };
 }
 
 // ─── Parseo y descifrado ──────────────────────────────────────────────────────
@@ -69,6 +123,39 @@ function parsearLlamada(item) {
   };
 }
 
+// ─── BD ───────────────────────────────────────────────────────────────────────
+
+function nuevoPool() {
+  return createPool({
+    server:   process.env.MCOB_DB_SERVER,
+    database: process.env.MCOB_DB_DATABASE,
+    user:     process.env.MCOB_DB_USER,
+    pass:     process.env.MCOB_DB_PASS,
+  });
+}
+
+// Carga a TMP_GESTION + SP + dedup de la fecha. Devuelve duplicados inactivados (o null).
+// El SP no evita duplicados: sin el dedup, re-ejecutar o reintentar un servidor duplica.
+async function cargarEnBD(pool, registros, fecha, estado) {
+  estado.fase = 'limpiar';
+  await limpiarTmpGestiones(pool);
+  estado.fase = 'bulk_insert';
+  await bulkRegistrarTmpGestiones(pool, registros);
+
+  if (process.env.INGESTA_SOLO_CARGA === 'true') {
+    console.log('[ipbusiness] INGESTA_SOLO_CARGA=true — SP_EJECUTAR omitido, TMP_GESTION llena para revisión');
+    return null;
+  }
+  estado.fase = 'ejecutar';
+  await registrarGestiones(pool);
+  estado.bdRegistrado = true;
+
+  estado.fase = 'dedup_sql';
+  const inact = await dedupGestionesVarios(pool, fechaDDMMYYYY(fecha));
+  console.log(`[ipbusiness] dedup SQL: ${inact} duplicados inactivados (${fechaDDMMYYYY(fecha)})`);
+  return inact;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuracion(ms) {
@@ -76,9 +163,60 @@ function formatDuracion(ms) {
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+function leerJson(file, def) {
+  try { if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  return def;
+}
 
-async function main() {
+// ─── Modo dirigido: reintenta un solo servidor (botón del panel) ──────────────
+// No crea una corrida nueva: parchea el detalle del servidor en la corrida de esa fecha.
+
+async function ejecutarDirigido(host, fecha) {
+  const resumen = { status: 'ok', modo: 'dirigido', host, fecha, servidor: null, error: null };
+  const url = getUrls().find(u => hostDe(u) === host);
+  if (!url) {
+    resumen.status = 'error';
+    resumen.error  = `Servidor ${host} no está en IPB_URL`;
+    return resumen;
+  }
+
+  const { detalle, registros } = await procesarServidor(url, fecha);
+  resumen.servidor = detalle;
+
+  if (registros.length) {
+    const pool = nuevoPool();
+    const fase = {};
+    try {
+      await pool.connect();
+      resumen.dupInactivados = await cargarEnBD(pool, registros, fecha, fase);
+    } catch (err) {
+      // Falla al registrar en BD: el servidor sigue pendiente de reintento.
+      detalle.resultado = 'error';
+      detalle.error     = `BD (${fase.fase}): ${err.message}`;
+      resumen.status    = 'error';
+      resumen.error     = detalle.error;
+    } finally {
+      try { await pool.close(); } catch {}
+    }
+  }
+  if (detalle.resultado === 'error') { resumen.status = 'error'; resumen.error = resumen.error || detalle.error; }
+
+  const { history, patched } = parchearServidor(leerJson(HIST_FILE, []), { fechaReporte: fecha, servidor: detalle });
+  if (patched) {
+    fs.writeFileSync(HIST_FILE, JSON.stringify(history, null, 2));
+    const last = leerJson(LAST_FILE, null);
+    if (last && last.fechaReporte === fecha) {
+      const nuevo = history.find(e => e.fechaReporte === fecha);
+      fs.writeFileSync(LAST_FILE, JSON.stringify(nuevo, null, 2));
+    }
+  }
+  console.log(`[ipbusiness] dirigido ${host}: ${detalle.resultado}, ${detalle.validos} válidos`);
+  return resumen;
+}
+
+// ─── Corrida completa ─────────────────────────────────────────────────────────
+
+async function ejecutarCompleto() {
   const t0 = Date.now();
   const estado = {
     status:           'ok',
@@ -88,22 +226,18 @@ async function main() {
     totalServidores:  0,
     totalRegistros:   0,
     registrosValidos: 0,
+    servidores:       [],
+    bdRegistrado:     false,
+    dupInactivados:   null,
     duracionMs:       null,
     duracion:         null,
     fase:             'inicio',
     error:            null,
   };
 
-  const pool = createPool({
-    server:   process.env.MCOB_DB_SERVER,
-    database: process.env.MCOB_DB_DATABASE,
-    user:     process.env.MCOB_DB_USER,
-    pass:     process.env.MCOB_DB_PASS,
-  });
+  const pool = nuevoPool();
 
   try {
-    await pool.connect();
-
     const fecha = getFecha(process.env.IPB_FECHA || '');
     const urls  = getUrls();
     estado.fechaReporte    = fecha;
@@ -112,43 +246,29 @@ async function main() {
 
     if (!urls.length) throw new Error('IPB_URL no configurado');
 
-    estado.fase = 'limpiar';
-    await limpiarTmpGestiones(pool);
-
     const registros = [];
     for (const url of urls) {
-      estado.fase = `fetch_${url.match(/\/\/([\w.]+)/)?.[1] || 'srv'}`;
-      try {
-        const llamadas = await listarLlamadas(url, fecha);
-        estado.totalRegistros += llamadas.length;
-        console.log(`[ipbusiness] ${url.match(/\/\/([\w.]+)/)?.[1]} → ${llamadas.length} registros`);
-        for (const item of llamadas) {
-          const reg = parsearLlamada(item);
-          if (reg) registros.push(reg);
-        }
-      } catch (err) {
-        console.error(`[ipbusiness] ${url} error: ${err.message}`);
-      }
+      estado.fase = `fetch_${hostDe(url)}`;
+      const r = await procesarServidor(url, fecha);
+      estado.servidores.push(r.detalle);
+      registros.push(...r.registros);
     }
 
-    estado.registrosValidos = registros.length;
-    estado.tamaño = `${registros.length} registros válidos`;
-    console.log(`[ipbusiness] ${registros.length} válidos / ${estado.totalRegistros} total`);
+    const resumen = resumirServidores(estado.servidores);
+    estado.totalRegistros   = resumen.totalRegistros;
+    estado.registrosValidos = resumen.registrosValidos;
+    estado.tamaño = `${resumen.registrosValidos} registros válidos`;
+    console.log(`[ipbusiness] ${resumen.registrosValidos} válidos / ${resumen.totalRegistros} total`);
 
     if (registros.length > 0) {
-      estado.fase = 'bulk_insert';
-      await bulkRegistrarTmpGestiones(pool, registros);
-
-      if (process.env.INGESTA_SOLO_CARGA === 'true') {
-        console.log('[ipbusiness] INGESTA_SOLO_CARGA=true — SP_EJECUTAR omitido, TMP_GESTION llena para revisión');
-      } else {
-        estado.fase = 'ejecutar';
-        await registrarGestiones(pool);
-      }
+      await pool.connect();
+      estado.dupInactivados = await cargarEnBD(pool, registros, fecha, estado);
     }
 
-    estado.fase = 'completado';
-    console.log('[ipbusiness] Procesamiento terminado correctamente');
+    estado.fase   = 'completado';
+    estado.status = resumen.status;
+    estado.error  = resumen.error;
+    console.log(`[ipbusiness] Procesamiento terminado — status=${estado.status}`);
 
   } catch (err) {
     estado.status = 'error';
@@ -159,31 +279,48 @@ async function main() {
     estado.duracionMs = Date.now() - t0;
     estado.duracion   = formatDuracion(estado.duracionMs);
 
-    fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
-    fs.writeFileSync(
-      path.join(DOWNLOADS_DIR, 'last_run_ipbusiness.json'),
-      JSON.stringify(estado, null, 2)
-    );
-
-    const histFile = path.join(DOWNLOADS_DIR, 'history_ipbusiness.json');
-    let hist = [];
-    try { if (fs.existsSync(histFile)) hist = JSON.parse(fs.readFileSync(histFile, 'utf8')); } catch {}
+    fs.writeFileSync(LAST_FILE, JSON.stringify(estado, null, 2));
+    let hist = leerJson(HIST_FILE, []);
     hist.unshift(estado);
     if (hist.length > 90) hist = hist.slice(0, 90);
-    fs.writeFileSync(histFile, JSON.stringify(hist, null, 2));
+    fs.writeFileSync(HIST_FILE, JSON.stringify(hist, null, 2));
 
     try { await notificarEjecucion(estado, 'IPBusiness — Ingesta Llamadas'); } catch (e) {
       console.error(`[ipbusiness] notificar error: ${e.message}`);
     }
-
-    process.stdout.write(`\n${JSON.stringify(estado)}\n`);
   }
+  return estado;
+}
 
-  process.exit(estado.status === 'ok' ? 0 : 1);
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main() {
+  const onlyHost = process.env.IPB_ONLY_HOST;
+  const dirigido = !!(onlyHost && process.env.IPB_FECHA);
+  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+
+  console.log(`[ipbusiness] esperando candado (${dirigido ? 'dirigido' : 'normal'})...`);
+  const release = await acquireLock({
+    lockPath: LOCK_PATH, ttlMs: LOCK_TTL_MS, pollMs: LOCK_POLL_MS, maxWaitMs: LOCK_WAIT_MS,
+    mode: dirigido ? 'dirigido' : 'normal',
+    label: dirigido ? `ipbusiness ${onlyHost}` : 'ipbusiness',
+  });
+  let salida;
+  try {
+    salida = dirigido
+      ? await ejecutarDirigido(onlyHost, process.env.IPB_FECHA)
+      : await ejecutarCompleto();
+  } catch (err) {
+    salida = { status: 'error', modo: dirigido ? 'dirigido' : 'normal', error: err.message };
+  } finally {
+    try { release(); } catch {}
+  }
+  process.stdout.write(`\n${JSON.stringify(salida)}\n`);
+  process.exit(salida.status === 'ok' ? 0 : 1);
 }
 
 if (require.main === module) {
   main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 }
 
-module.exports = { main };
+module.exports = { main, parsearLlamada, fechaDDMMYYYY };
