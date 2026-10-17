@@ -60,3 +60,10 @@ test('IPB: botón Regularizar fechas y contenedor de avance; deshabilitado si el
   assert.doesNotMatch(on, /disabled/);
   assert.match(renderRegularizarIpb('ipbusiness', false), /disabled/);
 });
+
+test('IPB: fila sin detalle se muestra sin botón Reintentar', () => {
+  const html = renderIpbServidoresTabla([{ host:'ce1.ipb.pe', resultado:'sin_detalle' }], { clientId:'c', autoId:'ipbusiness', fecha:'2026-10-16' });
+  assert.match(html, /ce1\.ipb\.pe/);
+  assert.match(html, /Sin detalle/);
+  assert.doesNotMatch(html, /rerunIpbServer/);
+});

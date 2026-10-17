@@ -1,3 +1,11 @@
+const envLib = require('../lib/env');
+const { servidoresParaPanel } = require('../../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+
+// IPB_URL vigente (el .env puede cambiar desde Configuración sin reiniciar).
+function ipbUrlConfig() {
+  try { return envLib.read().IPB_URL || ''; } catch { return process.env.IPB_URL || ''; }
+}
+
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -131,7 +139,7 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
       clientId, autoId,
       fecha: (lastRun.fechaReporte || '').split('/').reverse().join(''), // DD/MM/YYYY -> YYYYMMDD
     }) : ''}
-    ${autoId === 'ipbusiness' ? renderIpbServidoresTabla(lastRun.servidores, {
+    ${autoId === 'ipbusiness' ? renderIpbServidoresTabla(servidoresParaPanel(lastRun.servidores, ipbUrlConfig()), {
       clientId, autoId, fecha: lastRun.fechaReporte || '', // yyyy-MM-dd
     }) + renderRegularizarIpb(autoId, enabled) : ''}
     ${(() => {
@@ -1145,6 +1153,12 @@ function renderServidoresTabla(reconciliacion, ctx) {
 function renderIpbServidoresTabla(servidores, ctx) {
   if (!Array.isArray(servidores) || !servidores.length) return '';
   const filas = servidores.map(s => {
+    if (s.resultado === 'sin_detalle') {
+      return `<tr style="color:#a1a1aa">
+      <td>${esc(s.host)}</td><td>—</td><td>—</td>
+      <td title="La corrida mostrada no guardó detalle de este servidor (versión anterior o servidor agregado después)">Sin detalle en esta corrida</td>
+    </tr>`;
+    }
     const estadoCell = s.resultado === 'ok'
       ? `<span style="color:#15803d">OK</span>`
       : s.resultado === 'vacio'

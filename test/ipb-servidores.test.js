@@ -64,3 +64,19 @@ test('rangoFechas rechaza rangos inválidos, futuros o demasiado largos', () => 
   assert.match(rangoFechas('10/10/2026', '2026-10-11', '2026-10-16').error, /yyyy-MM-dd/);
   assert.match(rangoFechas('2026-01-01', '2026-10-16', '2026-10-16').error, /máximo/);
 });
+
+const { servidoresParaPanel } = require('../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+
+test('servidoresParaPanel lista todos los de IPB_URL en orden, con detalle si existe', () => {
+  const url = 'https://ce1.ipb.pe/x.php,https://ce3.ipb.pe/x.php, https://ce10.ipb.pe/x.php';
+  const filas = servidoresParaPanel([{ host: 'ce3.ipb.pe', resultado: 'ok', raw: 5, validos: 5 }], url);
+  assert.deepStrictEqual(filas.map(f => [f.host, f.resultado]),
+    [['ce1.ipb.pe', 'sin_detalle'], ['ce3.ipb.pe', 'ok'], ['ce10.ipb.pe', 'sin_detalle']]);
+});
+
+test('servidoresParaPanel: corrida antigua sin detalle y hosts retirados de IPB_URL', () => {
+  assert.strictEqual(servidoresParaPanel(undefined, 'https://ce1.ipb.pe/x.php')[0].resultado, 'sin_detalle');
+  const filas = servidoresParaPanel([{ host: 'ce2.ipb.pe', resultado: 'error' }], 'https://ce1.ipb.pe/x.php');
+  assert.deepStrictEqual(filas.map(f => f.host), ['ce1.ipb.pe', 'ce2.ipb.pe']);
+  assert.deepStrictEqual(servidoresParaPanel(undefined, ''), []);
+});

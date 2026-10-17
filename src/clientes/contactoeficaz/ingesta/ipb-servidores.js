@@ -45,6 +45,17 @@ function parchearServidor(history, { fechaReporte, servidor }) {
   return { history: out, patched: true };
 }
 
+// Filas del panel: todos los servidores configurados en IPB_URL (en ese orden), con el
+// detalle de la corrida si lo tiene; los que no (corrida antigua o servidor agregado
+// después) quedan como 'sin_detalle'. Hosts de la corrida que ya no están en IPB_URL van al final.
+function servidoresParaPanel(servidores, ipbUrl) {
+  const detalle = new Map((Array.isArray(servidores) ? servidores : []).map(s => [s.host, s]));
+  const hosts = String(ipbUrl || '').split(',').map(u => u.trim()).filter(Boolean).map(hostDe);
+  const filas = [...new Set(hosts)].map(h => detalle.get(h) || { host: h, resultado: 'sin_detalle' });
+  for (const [h, s] of detalle) if (!hosts.includes(h)) filas.push(s);
+  return filas;
+}
+
 const MAX_DIAS_REGULARIZAR = 31;
 
 // Fechas yyyy-MM-dd de desde..hasta (inclusive) para regularizar.
@@ -64,4 +75,4 @@ function rangoFechas(desde, hasta, hoy) {
   return { fechas };
 }
 
-module.exports = { hostDe, resumirServidores, parchearServidor, rangoFechas, MAX_DIAS_REGULARIZAR };
+module.exports = { hostDe, resumirServidores, parchearServidor, rangoFechas, servidoresParaPanel, MAX_DIAS_REGULARIZAR };
