@@ -50,3 +50,13 @@ test('IPB: fila por servidor, botón Reintentar solo en error/vacío', () => {
 test('IPB: sin detalle por servidor (corridas antiguas) no renderiza tabla', () => {
   assert.strictEqual(renderIpbServidoresTabla(undefined, {}), '');
 });
+
+const { renderRegularizarIpb } = require('../web/views/dashboard');
+
+test('IPB: botón Regularizar fechas y contenedor de avance; deshabilitado si el bot está inactivo', () => {
+  const on = renderRegularizarIpb('ipbusiness', true);
+  assert.match(on, /openRegularizarIpb\('ipbusiness'\)/);
+  assert.match(on, /id="regipb-progress"/);
+  assert.doesNotMatch(on, /disabled/);
+  assert.match(renderRegularizarIpb('ipbusiness', false), /disabled/);
+});

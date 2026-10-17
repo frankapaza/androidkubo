@@ -45,4 +45,23 @@ function parchearServidor(history, { fechaReporte, servidor }) {
   return { history: out, patched: true };
 }
 
-module.exports = { hostDe, resumirServidores, parchearServidor };
+const MAX_DIAS_REGULARIZAR = 31;
+
+// Fechas yyyy-MM-dd de desde..hasta (inclusive) para regularizar.
+// Devuelve { fechas } o { error } si el rango es inválido o incluye fechas futuras.
+function rangoFechas(desde, hasta, hoy) {
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  if (!re.test(String(desde || '')) || !re.test(String(hasta || ''))) return { error: 'fechas deben ser yyyy-MM-dd' };
+  const d0 = new Date(`${desde}T00:00:00Z`), d1 = new Date(`${hasta}T00:00:00Z`);
+  if (isNaN(d0) || isNaN(d1)) return { error: 'fecha inválida' };
+  if (d0 > d1) return { error: 'desde debe ser anterior o igual a hasta' };
+  if (hasta > hoy) return { error: 'no se pueden regularizar fechas futuras' };
+  const fechas = [];
+  for (let d = d0; d <= d1; d = new Date(d.getTime() + 86_400_000)) {
+    fechas.push(d.toISOString().slice(0, 10));
+    if (fechas.length > MAX_DIAS_REGULARIZAR) return { error: `máximo ${MAX_DIAS_REGULARIZAR} días por regularización` };
+  }
+  return { fechas };
+}
+
+module.exports = { hostDe, resumirServidores, parchearServidor, rangoFechas, MAX_DIAS_REGULARIZAR };

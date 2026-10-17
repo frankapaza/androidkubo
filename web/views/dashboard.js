@@ -133,7 +133,7 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
     }) : ''}
     ${autoId === 'ipbusiness' ? renderIpbServidoresTabla(lastRun.servidores, {
       clientId, autoId, fecha: lastRun.fechaReporte || '', // yyyy-MM-dd
-    }) : ''}
+    }) + renderRegularizarIpb(autoId, enabled) : ''}
     ${(() => {
       const url = screenshotUrl(lastRun.screenshot);
       if (!url) return '';
@@ -406,6 +406,8 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .btn-rerun-srv{margin-left:8px;padding:3px 10px;font-size:11px;border:1px solid #f59e0b;
       background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer}
     .btn-rerun-srv:disabled{opacity:.6;cursor:default}
+    .regipb{margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .regipb-progress{font-size:12px;color:#51515d}
     .btn-ver-camp{margin-left:6px;padding:2px 7px;font-size:12px;line-height:1;border:1px solid #e6e6ea;
       background:#fff;border-radius:6px;cursor:pointer}
     .btn-ver-camp:hover{background:#f4f4f5}
@@ -731,6 +733,86 @@ async function rerunIpbServer(clientId, autoId, host, fecha, btn) {
     location.reload();
   } catch (e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = txt; }
 }
+
+function isoLocal(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function openRegularizarIpb(autoId) {
+  const hoy = new Date();
+  const desde = isoLocal(new Date(hoy.getTime() - 7*86400000));
+  const hasta = isoLocal(new Date(hoy.getTime() - 86400000));
+  Swal.fire({
+    title: 'Regularizar fechas',
+    html: '<p style="font-size:13px;color:#51515d;margin-bottom:14px">Se descargan y registran todos los servidores para cada fecha del rango. ' +
+          'Los duplicados se inactivan automáticamente. Cada fecha toma alrededor de 1 minuto.</p>' +
+          '<div style="display:flex;gap:10px;justify-content:center">' +
+          '<label style="font-size:12px;text-align:left">Desde<br><input type="date" id="regipb-desde" class="swal2-input" style="margin:4px 0 0;width:160px" value="' + desde + '" max="' + isoLocal(hoy) + '"></label>' +
+          '<label style="font-size:12px;text-align:left">Hasta<br><input type="date" id="regipb-hasta" class="swal2-input" style="margin:4px 0 0;width:160px" value="' + hasta + '" max="' + isoLocal(hoy) + '"></label>' +
+          '</div>',
+    showCancelButton: true,
+    confirmButtonText: '<i class="fa-solid fa-calendar-days"></i> Regularizar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#171622',
+    reverseButtons: true,
+    preConfirm: () => {
+      const d = document.getElementById('regipb-desde').value;
+      const h = document.getElementById('regipb-hasta').value;
+      if (!d || !h) { Swal.showValidationMessage('Indica ambas fechas'); return false; }
+      if (d > h) { Swal.showValidationMessage('"Desde" debe ser anterior o igual a "Hasta"'); return false; }
+      return { desde: d, hasta: h };
+    },
+  }).then(async result => {
+    if (!result.isConfirmed) return;
+    try {
+      const r = await fetch('/api/clients/'+CID+'/automations/'+autoId+'/regularizar-ipb', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.value),
+      });
+      const j = await r.json();
+      if (!r.ok) { Notiflix.Notify.failure(j.error || ('Error ' + r.status)); if (r.status === 409) pollRegIpb(autoId); return; }
+      Notiflix.Notify.info('Regularización iniciada: ' + j.fechas.length + ' fecha(s)');
+      pollRegIpb(autoId);
+    } catch (e) { Notiflix.Notify.failure('Error de conexión'); }
+  });
+}
+
+// Consulta el avance cada 10 s; al terminar muestra el resumen y recarga.
+async function pollRegIpb(autoId, silencioso) {
+  const el = document.getElementById('regipb-progress');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/clients/'+CID+'/automations/'+autoId+'/regularizar-ipb');
+    const s = await r.json();
+    if (s.enCurso) {
+      el.innerHTML = '<span class="spin-sm"></span> Regularizando ' + esc(s.actual || '') +
+        ' (' + (s.resultados.length + 1) + '/' + s.fechas.length + ')…';
+      setTimeout(() => pollRegIpb(autoId, false), 10000);
+      return;
+    }
+    if (silencioso || !s.fin) return; // al cargar la página sin regularización en curso
+    const errores = s.resultados.filter(x => x.status !== 'ok');
+    const total = s.resultados.reduce((a, x) => a + (x.registrosValidos || 0), 0);
+    el.textContent = '';
+    await Swal.fire({
+      title: errores.length ? 'Regularización con errores' : 'Regularización completada',
+      icon: errores.length ? 'warning' : 'success',
+      html: '<table class="srv-tabla"><thead><tr><th>Fecha</th><th>Válidos</th><th>Estado</th></tr></thead><tbody>' +
+        s.resultados.map(x => '<tr><td>' + esc(x.fecha) + '</td><td>' + (x.registrosValidos || 0) + '</td><td>' +
+          (x.status === 'ok' ? '<span style="color:#15803d">OK</span>' : '<span style="color:#b91c1c">' + esc(x.error || 'error') + '</span>') +
+          '</td></tr>').join('') + '</tbody></table>' +
+        '<p style="font-size:12px;margin-top:10px">Total: ' + total + ' registros válidos. Las fechas con error se pueden volver a regularizar sin duplicar.</p>',
+      confirmButtonColor: '#171622',
+    });
+    location.reload();
+  } catch (e) {
+    if (!silencioso) setTimeout(() => pollRegIpb(autoId, false), 10000);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('regipb-progress')) pollRegIpb('ipbusiness', true);
+});
 
 function campEstadoBadge(r){
   if (r === 'ok') return '<span style="color:#15803d">ok</span>';
@@ -1086,4 +1168,14 @@ function renderIpbServidoresTabla(servidores, ctx) {
     <tbody>${filas}</tbody></table>`;
 }
 
-module.exports = { renderDashboard, renderServidoresTabla, renderIpbServidoresTabla };
+// Botón "Regularizar fechas" + línea de avance (la llena pollRegIpb en el cliente).
+function renderRegularizarIpb(autoId, enabled) {
+  return `<div class="regipb">
+    <button type="button" class="btn-rerun-srv" style="margin-left:0" ${enabled ? '' : 'disabled'}
+      onclick="openRegularizarIpb('${esc(autoId)}')">
+      <i class="fa-solid fa-calendar-days"></i> Regularizar fechas</button>
+    <span id="regipb-progress" class="regipb-progress"></span>
+  </div>`;
+}
+
+module.exports = { renderDashboard, renderServidoresTabla, renderIpbServidoresTabla, renderRegularizarIpb };

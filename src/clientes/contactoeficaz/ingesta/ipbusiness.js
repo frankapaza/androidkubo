@@ -279,14 +279,21 @@ async function ejecutarCompleto() {
     estado.duracionMs = Date.now() - t0;
     estado.duracion   = formatDuracion(estado.duracionMs);
 
-    fs.writeFileSync(LAST_FILE, JSON.stringify(estado, null, 2));
+    // Regularizar una fecha pasada no debe tapar en la tarjeta la corrida más reciente.
+    const last = leerJson(LAST_FILE, null);
+    if (!last || !last.fechaReporte || !estado.fechaReporte || estado.fechaReporte >= last.fechaReporte) {
+      fs.writeFileSync(LAST_FILE, JSON.stringify(estado, null, 2));
+    }
     let hist = leerJson(HIST_FILE, []);
     hist.unshift(estado);
     if (hist.length > 90) hist = hist.slice(0, 90);
     fs.writeFileSync(HIST_FILE, JSON.stringify(hist, null, 2));
 
-    try { await notificarEjecucion(estado, 'IPBusiness — Ingesta Llamadas'); } catch (e) {
-      console.error(`[ipbusiness] notificar error: ${e.message}`);
+    // En regularización (varias fechas seguidas) solo se notifica si hubo error.
+    if (process.env.IPB_REGULARIZAR !== 'true' || estado.status !== 'ok') {
+      try { await notificarEjecucion(estado, 'IPBusiness — Ingesta Llamadas'); } catch (e) {
+        console.error(`[ipbusiness] notificar error: ${e.message}`);
+      }
     }
   }
   return estado;

@@ -49,3 +49,18 @@ test('parchearServidor no toca nada si no hay corrida para esa fecha', () => {
     { fechaReporte: '2026-10-16', servidor: { host: 'x' } });
   assert.strictEqual(patched, false);
 });
+
+const { rangoFechas } = require('../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+
+test('rangoFechas genera días inclusivos, cruzando fin de mes', () => {
+  assert.deepStrictEqual(rangoFechas('2026-09-29', '2026-10-02', '2026-10-16').fechas,
+    ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']);
+  assert.deepStrictEqual(rangoFechas('2026-10-16', '2026-10-16', '2026-10-16').fechas, ['2026-10-16']);
+});
+
+test('rangoFechas rechaza rangos inválidos, futuros o demasiado largos', () => {
+  assert.match(rangoFechas('2026-10-10', '2026-10-09', '2026-10-16').error, /anterior/);
+  assert.match(rangoFechas('2026-10-10', '2026-10-17', '2026-10-16').error, /futuras/);
+  assert.match(rangoFechas('10/10/2026', '2026-10-11', '2026-10-16').error, /yyyy-MM-dd/);
+  assert.match(rangoFechas('2026-01-01', '2026-10-16', '2026-10-16').error, /máximo/);
+});

@@ -10,6 +10,7 @@ const botStatus = require('../lib/bot-status');
 const versionLib = require('../lib/version');
 const { renderDashboard } = require('../views/dashboard');
 const mfaLib = require('../../src/shared/mfa');
+const { rangoFechas } = require('../../src/clientes/contactoeficaz/ingesta/ipb-servidores');
 
 const ROOT = path.resolve(__dirname, '../..');
 const router = express.Router();
@@ -193,6 +194,75 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun-ipb-server',
     res.json({ exitCode: code, summary, stderr: stderr.slice(-1000) });
   });
   proc.on('error', err => { if (!res.headersSent) res.status(500).json({ error: err.message }); });
+});
+
+// ─── Regularización IPBusiness (rango de fechas pasadas) ─────────────────────
+// Corre en segundo plano, una fecha tras otra (cada una ~1 min con 8 servidores):
+// esperar en la petición superaría los timeouts del proxy. El panel consulta el avance.
+let regIpb = { enCurso: false, fechas: [], actual: null, resultados: [], inicio: null, fin: null };
+
+function hoyLima() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+}
+
+function correrFechaIpb(script, fecha) {
+  return new Promise(resolve => {
+    const proc = spawn('node', [script], {
+      env: { ...process.env, IPB_FECHA: fecha, IPB_REGULARIZAR: 'true' },
+      cwd: ROOT,
+    });
+    let stdout = '';
+    proc.stdout.on('data', d => { stdout += d.toString(); });
+    proc.stderr.on('data', d => process.stderr.write(d));
+    proc.on('close', () => {
+      const lines = stdout.trim().split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.startsWith('{') && line.endsWith('}')) { try { return resolve(JSON.parse(line)); } catch {} }
+      }
+      resolve({ status: 'error', error: 'sin resumen del proceso' });
+    });
+    proc.on('error', err => resolve({ status: 'error', error: err.message }));
+  });
+}
+
+// POST /api/clients/:clientId/automations/:automationId/regularizar-ipb  { desde, hasta }
+router.post('/api/clients/:clientId/automations/:automationId/regularizar-ipb', requireAuth, (req, res) => {
+  const automation = getAutomation(req, res);
+  if (!automation) return;
+  if (req.params.automationId !== 'ipbusiness') {
+    return res.status(400).json({ error: 'Solo disponible para ipbusiness' });
+  }
+  if (!botStatus.isEnabled(req.params.automationId)) {
+    return res.status(403).json({ error: 'Bot inactivo. Actívalo primero desde el dashboard.' });
+  }
+  if (regIpb.enCurso) return res.status(409).json({ error: 'Ya hay una regularización en curso', estado: regIpb });
+
+  const { fechas, error } = rangoFechas(req.body?.desde, req.body?.hasta, hoyLima());
+  if (error) return res.status(400).json({ error });
+
+  regIpb = { enCurso: true, fechas, actual: null, resultados: [], inicio: new Date().toISOString(), fin: null };
+  (async () => {
+    for (const fecha of fechas) {
+      regIpb.actual = fecha;
+      console.log(`[regularizar-ipb] procesando ${fecha}`);
+      const r = await correrFechaIpb(automation.script, fecha);
+      regIpb.resultados.push({ fecha, status: r.status, registrosValidos: r.registrosValidos ?? 0, error: r.error || null });
+    }
+    regIpb.actual = null;
+    regIpb.enCurso = false;
+    regIpb.fin = new Date().toISOString();
+    console.log(`[regularizar-ipb] terminado: ${fechas.length} fecha(s)`);
+  })();
+
+  res.status(202).json({ ok: true, fechas });
+});
+
+// GET /api/clients/:clientId/automations/:automationId/regularizar-ipb — avance
+router.get('/api/clients/:clientId/automations/:automationId/regularizar-ipb', requireAuth, (req, res) => {
+  const automation = getAutomation(req, res);
+  if (!automation) return;
+  res.json(regIpb);
 });
 
 // GET /api/mfa/mibanco — estado actual del challenge MFA
