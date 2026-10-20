@@ -80,3 +80,16 @@ test('servidoresParaPanel: corrida antigua sin detalle y hosts retirados de IPB_
   assert.deepStrictEqual(filas.map(f => f.host), ['ce1.ipb.pe', 'ce2.ipb.pe']);
   assert.deepStrictEqual(servidoresParaPanel(undefined, ''), []);
 });
+
+test('parsearRespuesta: "No se encontraron datos" es vacío, no error', () => {
+  const { parsearRespuesta } = require('../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+  assert.deepStrictEqual(parsearRespuesta('No se encontraron datos del 2026-10-18'), []);
+  assert.deepStrictEqual(parsearRespuesta('  No se encontraron datos del 2026-10-18\n'), []);
+});
+
+test('parsearRespuesta: JSON arreglo se devuelve; otro texto lanza error legible', () => {
+  const { parsearRespuesta } = require('../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+  assert.deepStrictEqual(parsearRespuesta('[{"CAMPANA":"1"}]'), [{ CAMPANA: '1' }]);
+  assert.throws(() => parsearRespuesta('{"a":1}'), /no es un arreglo JSON/);
+  assert.throws(() => parsearRespuesta('Error interno del servidor'), /respuesta no JSON: "Error interno/);
+});

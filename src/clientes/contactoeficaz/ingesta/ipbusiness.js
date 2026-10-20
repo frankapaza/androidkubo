@@ -8,7 +8,7 @@ const { createPool, limpiarTmpGestiones,
         dedupGestionesVarios }       = require('../../../shared/ingesta/mcob');
 const { notificarEjecucion }         = require('../../../shared/ingesta/notificar');
 const { acquireLock }                = require('../../../shared/ingesta/lock');
-const { hostDe, resumirServidores, parchearServidor } = require('./ipb-servidores');
+const { hostDe, parsearRespuesta, resumirServidores, parchearServidor } = require('./ipb-servidores');
 
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './descargas');
 const KEY_CRYPT     = process.env.KEY_CRYPT;
@@ -54,9 +54,7 @@ function getUrls() {
 async function listarLlamadas(url, fecha) {
   const res = await fetch(`${url}?f=${fecha}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (!Array.isArray(data)) throw new Error('respuesta no es un arreglo JSON');
-  return data; // Array<EntidadIPB>
+  return parsearRespuesta(await res.text()); // Array<EntidadIPB>
 }
 
 // Descarga un servidor con reintentos. Nunca lanza: devuelve el detalle del servidor

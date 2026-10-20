@@ -5,6 +5,17 @@ function hostDe(url) {
   try { return new URL(url).host; } catch { return url; }
 }
 
+// Cuerpo de la API → arreglo de llamadas. Sin llamadas en la fecha (ej. fin de semana)
+// la API responde HTTP 200 con texto plano "No se encontraron datos del yyyy-MM-dd".
+function parsearRespuesta(texto) {
+  const t = String(texto || '').trim();
+  if (/^No se encontraron datos/i.test(t)) return [];
+  let data;
+  try { data = JSON.parse(t); } catch { throw new Error(`respuesta no JSON: "${t.slice(0, 60)}"`); }
+  if (!Array.isArray(data)) throw new Error('respuesta no es un arreglo JSON');
+  return data;
+}
+
 // Totales + status de la corrida a partir del detalle por servidor.
 // 'vacio' (respuesta [] válida) no es error; 'error' (HTTP/timeout/JSON) sí.
 function resumirServidores(servidores) {
@@ -75,4 +86,4 @@ function rangoFechas(desde, hasta, hoy) {
   return { fechas };
 }
 
-module.exports = { hostDe, resumirServidores, parchearServidor, rangoFechas, servidoresParaPanel, MAX_DIAS_REGULARIZAR };
+module.exports = { hostDe, parsearRespuesta, resumirServidores, parchearServidor, rangoFechas, servidoresParaPanel, MAX_DIAS_REGULARIZAR };
