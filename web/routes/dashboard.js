@@ -10,7 +10,7 @@ const botStatus = require('../lib/bot-status');
 const versionLib = require('../lib/version');
 const { renderDashboard } = require('../views/dashboard');
 const mfaLib = require('../../src/shared/mfa');
-const { rangoFechas } = require('../../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+const { rangoFechas, validarHosts, hostDe } = require('../../src/clientes/contactoeficaz/ingesta/ipb-servidores');
 
 const ROOT = path.resolve(__dirname, '../..');
 const router = express.Router();
@@ -199,16 +199,17 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun-ipb-server',
 // ─── Regularización IPBusiness (rango de fechas pasadas) ─────────────────────
 // Corre en segundo plano, una fecha tras otra (cada una ~1 min con 8 servidores):
 // esperar en la petición superaría los timeouts del proxy. El panel consulta el avance.
-let regIpb = { enCurso: false, fechas: [], actual: null, resultados: [], inicio: null, fin: null };
+let regIpb = { enCurso: false, fechas: [], hosts: null, actual: null, resultados: [], inicio: null, fin: null };
 
 function hoyLima() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
 }
 
-function correrFechaIpb(script, fecha) {
+// hosts: null = todos los servidores; si no, solo esos (IPB_HOSTS).
+function correrFechaIpb(script, fecha, hosts) {
   return new Promise(resolve => {
     const proc = spawn('node', [script], {
-      env: { ...process.env, IPB_FECHA: fecha, IPB_REGULARIZAR: 'true' },
+      env: { ...process.env, IPB_FECHA: fecha, IPB_REGULARIZAR: 'true', IPB_HOSTS: hosts ? hosts.join(',') : '' },
       cwd: ROOT,
     });
     let stdout = '';
@@ -226,7 +227,7 @@ function correrFechaIpb(script, fecha) {
   });
 }
 
-// POST /api/clients/:clientId/automations/:automationId/regularizar-ipb  { desde, hasta }
+// POST /api/clients/:clientId/automations/:automationId/regularizar-ipb  { desde, hasta, hosts? }
 router.post('/api/clients/:clientId/automations/:automationId/regularizar-ipb', requireAuth, (req, res) => {
   const automation = getAutomation(req, res);
   if (!automation) return;
@@ -240,13 +241,18 @@ router.post('/api/clients/:clientId/automations/:automationId/regularizar-ipb', 
 
   const { fechas, error } = rangoFechas(req.body?.desde, req.body?.hasta, hoyLima());
   if (error) return res.status(400).json({ error });
+  let ipbUrl;
+  try { ipbUrl = envLib.read().IPB_URL || ''; } catch { ipbUrl = process.env.IPB_URL || ''; }
+  const disponibles = ipbUrl.split(',').map(u => u.trim()).filter(Boolean).map(hostDe);
+  const { hosts, error: errHosts } = validarHosts(req.body?.hosts, disponibles);
+  if (errHosts) return res.status(400).json({ error: errHosts });
 
-  regIpb = { enCurso: true, fechas, actual: null, resultados: [], inicio: new Date().toISOString(), fin: null };
+  regIpb = { enCurso: true, fechas, hosts, actual: null, resultados: [], inicio: new Date().toISOString(), fin: null };
   (async () => {
     for (const fecha of fechas) {
       regIpb.actual = fecha;
-      console.log(`[regularizar-ipb] procesando ${fecha}`);
-      const r = await correrFechaIpb(automation.script, fecha);
+      console.log(`[regularizar-ipb] procesando ${fecha}${hosts ? ` (${hosts.join(', ')})` : ''}`);
+      const r = await correrFechaIpb(automation.script, fecha, hosts);
       regIpb.resultados.push({ fecha, status: r.status, registrosValidos: r.registrosValidos ?? 0, error: r.error || null });
     }
     regIpb.actual = null;
@@ -255,7 +261,7 @@ router.post('/api/clients/:clientId/automations/:automationId/regularizar-ipb', 
     console.log(`[regularizar-ipb] terminado: ${fechas.length} fecha(s)`);
   })();
 
-  res.status(202).json({ ok: true, fechas });
+  res.status(202).json({ ok: true, fechas, hosts });
 });
 
 // GET /api/clients/:clientId/automations/:automationId/regularizar-ipb — avance

@@ -55,10 +55,15 @@ const { renderRegularizarIpb } = require('../web/views/dashboard');
 
 test('IPB: botón Regularizar fechas y contenedor de avance; deshabilitado si el bot está inactivo', () => {
   const on = renderRegularizarIpb('ipbusiness', true);
-  assert.match(on, /openRegularizarIpb\('ipbusiness'\)/);
+  assert.match(on, /openRegularizarIpb\('ipbusiness', this\.dataset\.hosts\)/);
   assert.match(on, /id="regipb-progress"/);
   assert.doesNotMatch(on, /disabled/);
   assert.match(renderRegularizarIpb('ipbusiness', false), /disabled/);
+});
+
+test('IPB: Regularizar lleva los servidores elegibles en data-hosts', () => {
+  const html = renderRegularizarIpb('ipbusiness', true, ['ce1.ipb.pe', 'ce3.ipb.pe']);
+  assert.match(html, /data-hosts="ce1\.ipb\.pe,ce3\.ipb\.pe"/);
 });
 
 test('IPB: fila sin detalle se muestra sin botón Reintentar', () => {

@@ -36,11 +36,18 @@ function resumirServidores(servidores) {
 // Reintento de un servidor: reemplaza su detalle en la corrida de esa fecha
 // (la más reciente) y recalcula totales/status. No muta la entrada recibida.
 function parchearServidor(history, { fechaReporte, servidor }) {
+  return parchearServidores(history, { fechaReporte, servidores: [servidor] });
+}
+
+// Igual que parchearServidor pero con varios servidores (regularización parcial).
+// Los hosts que la corrida no tenía se agregan al final.
+function parchearServidores(history, { fechaReporte, servidores: nuevos }) {
   const idx = history.findIndex(e => e.fechaReporte === fechaReporte && Array.isArray(e.servidores));
   if (idx === -1) return { history, patched: false };
   const e = history[idx];
-  const servidores = e.servidores.map(s =>
-    s.host === servidor.host ? { ...servidor, reintentado: true } : s);
+  const porHost = new Map(nuevos.map(s => [s.host, { ...s, reintentado: true }]));
+  const servidores = e.servidores.map(s => porHost.get(s.host) || s);
+  for (const [h, s] of porHost) if (!e.servidores.some(x => x.host === h)) servidores.push(s);
   const r = resumirServidores(servidores);
   const nueva = {
     ...e,
@@ -86,4 +93,15 @@ function rangoFechas(desde, hasta, hoy) {
   return { fechas };
 }
 
-module.exports = { hostDe, parsearRespuesta, resumirServidores, parchearServidor, rangoFechas, servidoresParaPanel, MAX_DIAS_REGULARIZAR };
+// Hosts elegidos para regularizar. Vacío/ausente o todos = null (corrida completa).
+// Devuelve { hosts } o { error } si alguno no está entre los disponibles.
+function validarHosts(hosts, disponibles) {
+  if (hosts == null || (Array.isArray(hosts) && !hosts.length)) return { hosts: null };
+  if (!Array.isArray(hosts) || hosts.some(h => typeof h !== 'string')) return { error: 'hosts debe ser una lista' };
+  const desconocidos = hosts.filter(h => !disponibles.includes(h));
+  if (desconocidos.length) return { error: `servidores no configurados en IPB_URL: ${desconocidos.join(', ')}` };
+  const unicos = [...new Set(hosts)];
+  return { hosts: unicos.length === new Set(disponibles).size ? null : unicos };
+}
+
+module.exports = { hostDe, parsearRespuesta, resumirServidores, parchearServidor, parchearServidores, validarHosts, rangoFechas, servidoresParaPanel, MAX_DIAS_REGULARIZAR };

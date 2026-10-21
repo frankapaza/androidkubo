@@ -8,7 +8,7 @@ const { createPool, limpiarTmpGestiones,
         dedupGestionesVarios }       = require('../../../shared/ingesta/mcob');
 const { notificarEjecucion }         = require('../../../shared/ingesta/notificar');
 const { acquireLock }                = require('../../../shared/ingesta/lock');
-const { hostDe, parsearRespuesta, resumirServidores, parchearServidor } = require('./ipb-servidores');
+const { hostDe, parsearRespuesta, resumirServidores, parchearServidor, parchearServidores } = require('./ipb-servidores');
 
 const DOWNLOADS_DIR = path.resolve(process.env.DOWNLOAD_DIR || './descargas');
 const KEY_CRYPT     = process.env.KEY_CRYPT;
@@ -233,12 +233,16 @@ async function ejecutarCompleto() {
     error:            null,
   };
 
+  // Regularización parcial: solo estos servidores (separados por coma).
+  const hostsEnv  = (process.env.IPB_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean);
+  const soloHosts = hostsEnv.length ? hostsEnv : null;
   const pool = nuevoPool();
 
   try {
     const fecha = getFecha(process.env.IPB_FECHA || '');
-    const urls  = getUrls();
+    const urls  = soloHosts ? getUrls().filter(u => soloHosts.includes(hostDe(u))) : getUrls();
     estado.fechaReporte    = fecha;
+    if (soloHosts) estado.hosts = soloHosts;
     estado.totalServidores = urls.length;
     console.log(`[ipbusiness] fecha=${fecha}, servidores=${urls.length}`);
 
@@ -277,15 +281,27 @@ async function ejecutarCompleto() {
     estado.duracionMs = Date.now() - t0;
     estado.duracion   = formatDuracion(estado.duracionMs);
 
-    // Regularizar una fecha pasada no debe tapar en la tarjeta la corrida más reciente.
+    // Parcial con corrida previa de esa fecha: se fusionan sus servidores en ella
+    // (como el reintento dirigido) en vez de crear una corrida con solo algunos.
     const last = leerJson(LAST_FILE, null);
-    if (!last || !last.fechaReporte || !estado.fechaReporte || estado.fechaReporte >= last.fechaReporte) {
-      fs.writeFileSync(LAST_FILE, JSON.stringify(estado, null, 2));
-    }
     let hist = leerJson(HIST_FILE, []);
-    hist.unshift(estado);
-    if (hist.length > 90) hist = hist.slice(0, 90);
-    fs.writeFileSync(HIST_FILE, JSON.stringify(hist, null, 2));
+    const { history, patched } = soloHosts && estado.servidores.length
+      ? parchearServidores(hist, { fechaReporte: estado.fechaReporte, servidores: estado.servidores })
+      : { history: hist, patched: false };
+    if (patched) {
+      fs.writeFileSync(HIST_FILE, JSON.stringify(history, null, 2));
+      if (last && last.fechaReporte === estado.fechaReporte) {
+        fs.writeFileSync(LAST_FILE, JSON.stringify(history.find(e => e.fechaReporte === estado.fechaReporte), null, 2));
+      }
+    } else {
+      // Regularizar una fecha pasada no debe tapar en la tarjeta la corrida más reciente.
+      if (!last || !last.fechaReporte || !estado.fechaReporte || estado.fechaReporte >= last.fechaReporte) {
+        fs.writeFileSync(LAST_FILE, JSON.stringify(estado, null, 2));
+      }
+      hist.unshift(estado);
+      if (hist.length > 90) hist = hist.slice(0, 90);
+      fs.writeFileSync(HIST_FILE, JSON.stringify(hist, null, 2));
+    }
 
     // En regularización (varias fechas seguidas) solo se notifica si hubo error.
     if (process.env.IPB_REGULARIZAR !== 'true' || estado.status !== 'ok') {

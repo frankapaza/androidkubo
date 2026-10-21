@@ -141,7 +141,7 @@ function renderCard(clientId, autoId, auto, lastRun, isAdminView, enabled = true
     }) : ''}
     ${autoId === 'ipbusiness' ? renderIpbServidoresTabla(servidoresParaPanel(lastRun.servidores, ipbUrlConfig()), {
       clientId, autoId, fecha: lastRun.fechaReporte || '', // yyyy-MM-dd
-    }) + renderRegularizarIpb(autoId, enabled) : ''}
+    }) + renderRegularizarIpb(autoId, enabled, servidoresParaPanel([], ipbUrlConfig()).map(s => s.host)) : ''}
     ${(() => {
       const url = screenshotUrl(lastRun.screenshot);
       if (!url) return '';
@@ -746,18 +746,34 @@ function isoLocal(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-function openRegularizarIpb(autoId) {
+function regIpbMarcarTodos(on) {
+  document.querySelectorAll('.regipb-host').forEach(c => { c.checked = on; });
+}
+function regIpbSyncTodos() {
+  document.getElementById('regipb-todos').checked =
+    [...document.querySelectorAll('.regipb-host')].every(c => c.checked);
+}
+
+function openRegularizarIpb(autoId, hostsCsv) {
+  const hosts = String(hostsCsv || '').split(',').filter(Boolean);
   const hoy = new Date();
   const desde = isoLocal(new Date(hoy.getTime() - 7*86400000));
   const hasta = isoLocal(new Date(hoy.getTime() - 86400000));
   Swal.fire({
     title: 'Regularizar fechas',
-    html: '<p style="font-size:13px;color:#51515d;margin-bottom:14px">Se descargan y registran todos los servidores para cada fecha del rango. ' +
+    html: '<p style="font-size:13px;color:#51515d;margin-bottom:14px">Se descargan y registran los servidores elegidos para cada fecha del rango. ' +
           'Los duplicados se inactivan automáticamente. Cada fecha toma alrededor de 1 minuto.</p>' +
           '<div style="display:flex;gap:10px;justify-content:center">' +
           '<label style="font-size:12px;text-align:left">Desde<br><input type="date" id="regipb-desde" class="swal2-input" style="margin:4px 0 0;width:160px" value="' + desde + '" max="' + isoLocal(hoy) + '"></label>' +
           '<label style="font-size:12px;text-align:left">Hasta<br><input type="date" id="regipb-hasta" class="swal2-input" style="margin:4px 0 0;width:160px" value="' + hasta + '" max="' + isoLocal(hoy) + '"></label>' +
-          '</div>',
+          '</div>' +
+          (hosts.length ? '<div style="margin-top:16px;text-align:left;font-size:12px">' +
+            '<label style="font-weight:600"><input type="checkbox" id="regipb-todos" checked ' +
+            'onchange="regIpbMarcarTodos(this.checked)"> Servidores (todos)</label>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px 10px;margin-top:6px">' +
+            hosts.map(h => '<label><input type="checkbox" class="regipb-host" value="' + esc(h) + '" checked ' +
+              'onchange="regIpbSyncTodos()"> ' + esc(h) + '</label>').join('') +
+            '</div></div>' : ''),
     showCancelButton: true,
     confirmButtonText: '<i class="fa-solid fa-calendar-days"></i> Regularizar',
     cancelButtonText: 'Cancelar',
@@ -768,7 +784,10 @@ function openRegularizarIpb(autoId) {
       const h = document.getElementById('regipb-hasta').value;
       if (!d || !h) { Swal.showValidationMessage('Indica ambas fechas'); return false; }
       if (d > h) { Swal.showValidationMessage('"Desde" debe ser anterior o igual a "Hasta"'); return false; }
-      return { desde: d, hasta: h };
+      const marcados = [...document.querySelectorAll('.regipb-host:checked')].map(c => c.value);
+      if (hosts.length && !marcados.length) { Swal.showValidationMessage('Elige al menos un servidor'); return false; }
+      // Todos marcados = corrida completa (no se envía hosts).
+      return marcados.length === hosts.length ? { desde: d, hasta: h } : { desde: d, hasta: h, hosts: marcados };
     },
   }).then(async result => {
     if (!result.isConfirmed) return;
@@ -779,7 +798,8 @@ function openRegularizarIpb(autoId) {
       });
       const j = await r.json();
       if (!r.ok) { Notiflix.Notify.failure(j.error || ('Error ' + r.status)); if (r.status === 409) pollRegIpb(autoId); return; }
-      Notiflix.Notify.info('Regularización iniciada: ' + j.fechas.length + ' fecha(s)');
+      Notiflix.Notify.info('Regularización iniciada: ' + j.fechas.length + ' fecha(s)' +
+        (j.hosts ? ', ' + j.hosts.length + ' servidor(es)' : ''));
       pollRegIpb(autoId);
     } catch (e) { Notiflix.Notify.failure('Error de conexión'); }
   });
@@ -794,7 +814,8 @@ async function pollRegIpb(autoId, silencioso) {
     const s = await r.json();
     if (s.enCurso) {
       el.innerHTML = '<span class="spin-sm"></span> Regularizando ' + esc(s.actual || '') +
-        ' (' + (s.resultados.length + 1) + '/' + s.fechas.length + ')…';
+        ' (' + (s.resultados.length + 1) + '/' + s.fechas.length + ')' +
+        (s.hosts ? ' — ' + esc(s.hosts.join(', ')) : '') + '…';
       setTimeout(() => pollRegIpb(autoId, false), 10000);
       return;
     }
@@ -809,7 +830,9 @@ async function pollRegIpb(autoId, silencioso) {
         s.resultados.map(x => '<tr><td>' + esc(x.fecha) + '</td><td>' + (x.registrosValidos || 0) + '</td><td>' +
           (x.status === 'ok' ? '<span style="color:#15803d">OK</span>' : '<span style="color:#b91c1c">' + esc(x.error || 'error') + '</span>') +
           '</td></tr>').join('') + '</tbody></table>' +
-        '<p style="font-size:12px;margin-top:10px">Total: ' + total + ' registros válidos. Las fechas con error se pueden volver a regularizar sin duplicar.</p>',
+        '<p style="font-size:12px;margin-top:10px">Total: ' + total + ' registros válidos' +
+        (s.hosts ? ' (servidores: ' + esc(s.hosts.join(', ')) + ')' : '') +
+        '. Las fechas con error se pueden volver a regularizar sin duplicar.</p>',
       confirmButtonColor: '#171622',
     });
     location.reload();
@@ -1183,10 +1206,12 @@ function renderIpbServidoresTabla(servidores, ctx) {
 }
 
 // Botón "Regularizar fechas" + línea de avance (la llena pollRegIpb en el cliente).
-function renderRegularizarIpb(autoId, enabled) {
+// hosts: servidores de IPB_URL que el modal ofrece para elegir.
+function renderRegularizarIpb(autoId, enabled, hosts = []) {
   return `<div class="regipb">
     <button type="button" class="btn-rerun-srv" style="margin-left:0" ${enabled ? '' : 'disabled'}
-      onclick="openRegularizarIpb('${esc(autoId)}')">
+      data-hosts="${esc(hosts.join(','))}"
+      onclick="openRegularizarIpb('${esc(autoId)}', this.dataset.hosts)">
       <i class="fa-solid fa-calendar-days"></i> Regularizar fechas</button>
     <span id="regipb-progress" class="regipb-progress"></span>
   </div>`;

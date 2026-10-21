@@ -93,3 +93,29 @@ test('parsearRespuesta: JSON arreglo se devuelve; otro texto lanza error legible
   assert.throws(() => parsearRespuesta('{"a":1}'), /no es un arreglo JSON/);
   assert.throws(() => parsearRespuesta('Error interno del servidor'), /respuesta no JSON: "Error interno/);
 });
+
+const { parchearServidores, validarHosts } = require('../src/clientes/contactoeficaz/ingesta/ipb-servidores');
+
+test('parchearServidores reemplaza varios servidores y agrega los que faltaban', () => {
+  const hist = [{ fechaReporte: '2026-10-16', status: 'error', servidores: srvs.map(s => ({ ...s })) }];
+  const { history, patched } = parchearServidores(hist, { fechaReporte: '2026-10-16', servidores: [
+    { host: 'ce6.ipb.pe', resultado: 'ok', raw: 50, validos: 50 },
+    { host: 'ce9.ipb.pe', resultado: 'ok', raw: 10, validos: 9 },
+  ] });
+  assert.strictEqual(patched, true);
+  const e = history[0];
+  assert.deepStrictEqual(e.servidores.map(s => s.host), ['ce3.ipb.pe', 'ce6.ipb.pe', 'ce7.ipb.pe', 'ce9.ipb.pe']);
+  assert.strictEqual(e.status, 'ok');
+  assert.strictEqual(e.registrosValidos, 157);
+  assert.strictEqual(hist[0].servidores[1].resultado, 'error'); // no muta la entrada
+});
+
+test('validarHosts: vacío o todos = null; rechaza hosts desconocidos', () => {
+  const disp = ['ce1.ipb.pe', 'ce3.ipb.pe'];
+  assert.strictEqual(validarHosts(undefined, disp).hosts, null);
+  assert.strictEqual(validarHosts([], disp).hosts, null);
+  assert.strictEqual(validarHosts(['ce3.ipb.pe', 'ce1.ipb.pe'], disp).hosts, null);
+  assert.deepStrictEqual(validarHosts(['ce3.ipb.pe', 'ce3.ipb.pe'], disp).hosts, ['ce3.ipb.pe']);
+  assert.match(validarHosts(['ce9.ipb.pe'], disp).error, /ce9/);
+  assert.match(validarHosts('ce1.ipb.pe', disp).error, /lista/);
+});
