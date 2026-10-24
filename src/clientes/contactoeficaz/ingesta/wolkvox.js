@@ -349,9 +349,10 @@ async function ejecutar() {
         estado.fase = 'ejecutar';
         await registrarGestiones(pool);
 
-        // ── Capa 2: dedup SQL post-SP — solo en ejecución mañana (tipo=1)
-        // tipo=1 reprocesa la fecha de ayer que ya corrió en tipo=2 el día anterior
-        if (tipo === 1) {
+        // ── Capa 2: dedup SQL post-SP — en ejecución mañana (tipo=1) y fecha manual (tipo=0)
+        // tipo=1 reprocesa la fecha de ayer que ya corrió en tipo=2 el día anterior;
+        // tipo=0 puede reprocesar una fecha ya cargada desde "Enviar ahora".
+        if (tipo !== 2) {
           estado.fase = 'dedup_sql';
           const inactivados = await dedupGestionesVarios(pool, estado.fechaReporte);
           if (inactivados > 0) {

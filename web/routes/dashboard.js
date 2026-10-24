@@ -74,6 +74,30 @@ router.post('/api/clients/:clientId/automations/:automationId/toggle', requireAu
   res.json({ ok: true, enabled });
 });
 
+// YYYYMMDD real y no futura (hora Perú). Devuelve mensaje de error o null.
+function validarFechaManual(fecha) {
+  if (!/^\d{8}$/.test(String(fecha))) return 'fecha debe ser YYYYMMDD';
+  const iso = `${fecha.slice(0,4)}-${fecha.slice(4,6)}-${fecha.slice(6,8)}`;
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (isNaN(d) || d.toISOString().slice(0, 10) !== iso) return 'fecha inválida';
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+  if (iso > hoy) return 'la fecha no puede ser futura';
+  return null;
+}
+
+// GET /api/clients/:clientId/automations/:automationId/proxima-ejecucion
+// Próxima corrida programada (hora Perú) y, en wolkvox, la fecha que procesará.
+router.get('/api/clients/:clientId/automations/:automationId/proxima-ejecucion', requireAuth, (req, res) => {
+  const automation = getAutomation(req, res);
+  if (!automation) return;
+  const prox = scheduler.proximaEjecucionDe(req.params.automationId);
+  if (!prox) return res.json({ proxima: null });
+  res.json({
+    proxima: { ...prox, slot: scheduler.slotKey(prox.fecha, prox.hora) },
+    procesa: req.params.automationId === 'wolkvox' ? scheduler.fechaProcesaWolkvox(prox) : null,
+  });
+});
+
 // POST /api/clients/:clientId/automations/:automationId/rerun
 router.post('/api/clients/:clientId/automations/:automationId/rerun', requireAuth, (req, res) => {
   const automation = getAutomation(req, res);
@@ -83,14 +107,25 @@ router.post('/api/clients/:clientId/automations/:automationId/rerun', requireAut
     return res.status(403).json({ error: 'Bot inactivo. Actívalo primero desde el dashboard.' });
   }
 
-  if (req.body?.skipSchedule) {
+  // Fecha manual (YYYYMMDD) solo para wolkvox: procesa todos los servidores sin importar el turno.
+  const fecha = req.body?.fecha;
+  if (fecha !== undefined) {
+    if (req.params.automationId !== 'wolkvox') return res.status(400).json({ error: 'fecha solo disponible para wolkvox' });
+    const errFecha = validarFechaManual(fecha);
+    if (errFecha) return res.status(400).json({ error: errFecha });
+  }
+
+  if (req.body?.skipSlot) {
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(req.body.skipSlot)) return res.status(400).json({ error: 'skipSlot inválido' });
+    scheduler.markSkipSlot(req.params.automationId, req.body.skipSlot);
+  } else if (req.body?.skipSchedule) {
     scheduler.markSkipToday(req.params.automationId);
   }
 
   req.socket.setTimeout(10 * 60 * 1000);
 
   const proc = spawn('node', [automation.script], {
-    env: { ...process.env },
+    env: { ...process.env, ...(fecha ? { WOLKVOX_FECHA: fecha } : {}) },
     cwd: ROOT,
   });
 

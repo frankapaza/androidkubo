@@ -685,22 +685,73 @@ async function resendFailed(autoId, btn) {
   }
 }
 
-function openSendNow(autoId, displayName) {
+// '2026-10-24','02:00' → 'sáb 24/10 02:00'
+function fmtSlot(fecha, hora) {
+  var dias = ['dom','lun','mar','mié','jue','vie','sáb'];
+  var d = new Date(fecha + 'T12:00:00Z');
+  return dias[d.getUTCDay()] + ' ' + fecha.slice(8,10) + '/' + fecha.slice(5,7) + ' ' + hora;
+}
+
+async function openSendNow(autoId, displayName) {
+  var info = { proxima: null, procesa: null };
+  try {
+    var r = await fetch('/api/clients/'+CID+'/automations/'+autoId+'/proxima-ejecucion');
+    if (r.ok) info = await r.json();
+  } catch {}
+  var conFecha = autoId === 'wolkvox';
+  var hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+  var prox = info.proxima;
+  var procesaIso = info.procesa ? info.procesa.slice(0,4)+'-'+info.procesa.slice(4,6)+'-'+info.procesa.slice(6,8) : null;
+
+  var html = '<p style="font-size:13px;color:#51515d;margin-bottom:14px"><strong style="color:#171622">' + esc(displayName) + '</strong> se ejecutará inmediatamente.</p>';
+  if (conFecha) {
+    html += '<label style="display:block;text-align:left;font-size:12px;color:#51515d;margin-bottom:12px">Fecha a procesar' +
+            '<input type="date" id="swal-fecha" value="' + hoy + '" max="' + hoy + '" class="swal2-input" style="margin:6px 0 0;width:100%;box-sizing:border-box">' +
+            '<span class="send-chk-hint">Procesa todos los servidores para esa fecha, sin importar el turno.</span></label>';
+  }
+  if (prox) {
+    html += '<label class="send-chk">' +
+            '<input type="checkbox" id="swal-skip-chk">' +
+            '<span>' +
+            '<span class="send-chk-text">Cancelar la próxima ejecución: ' + esc(fmtSlot(prox.fecha, prox.hora)) +
+              (procesaIso ? ' (procesará ' + esc(procesaIso.slice(8,10) + '/' + procesaIso.slice(5,7)) + ')' : '') + '</span>' +
+            '<span class="send-chk-hint" id="swal-skip-hint">Si no marcas esto, la próxima ejecución programada también se realizará a su horario.</span>' +
+            '</span></label>';
+  }
+
   Swal.fire({
     title: 'Enviar ahora',
-    html: '<p style="font-size:13px;color:#51515d;margin-bottom:14px"><strong style="color:#171622">' + esc(displayName) + '</strong> se ejecutará inmediatamente.</p>' +
-          '<label class="send-chk">' +
-          '<input type="checkbox" id="swal-skip-chk">' +
-          '<span>' +
-          '<span class="send-chk-text">Cancelar la ejecución programada de hoy</span>' +
-          '<span class="send-chk-hint">Si no marcas esto, el envío programado del día también se ejecutará a su horario.</span>' +
-          '</span></label>',
+    html: html,
     showCancelButton: true,
     confirmButtonText: '<i class="fa-solid fa-paper-plane"></i> Ejecutar ahora',
     cancelButtonText: 'Cancelar',
     confirmButtonColor: '#171622',
     reverseButtons: true,
-    preConfirm: () => document.getElementById('swal-skip-chk')?.checked || false,
+    didOpen: () => {
+      var inp = document.getElementById('swal-fecha');
+      var chk = document.getElementById('swal-skip-chk');
+      var hint = document.getElementById('swal-skip-hint');
+      if (!inp || !chk || !procesaIso) return;
+      var hintOrig = hint.textContent;
+      var sync = () => {
+        var distinta = inp.value !== procesaIso;
+        if (distinta) chk.checked = false;
+        hint.textContent = distinta
+          ? 'Ojo: la fecha elegida no es la que procesará esa ejecución; si la cancelas, el ' + procesaIso.slice(8,10) + '/' + procesaIso.slice(5,7) + ' quedará sin cargar.'
+          : hintOrig;
+        hint.style.color = distinta ? '#b45309' : '';
+      };
+      inp.addEventListener('change', sync);
+      sync();
+    },
+    preConfirm: () => {
+      var inp = document.getElementById('swal-fecha');
+      if (inp && (!inp.value || inp.value > hoy)) { Swal.showValidationMessage('Elige una fecha válida (no futura)'); return false; }
+      return {
+        fecha: inp ? inp.value.replace(/-/g, '') : undefined,
+        skipSlot: prox && document.getElementById('swal-skip-chk')?.checked ? prox.slot : undefined,
+      };
+    },
   }).then(result => {
     if (result.isConfirmed) runNow(CID, autoId, result.value);
   });
@@ -908,7 +959,8 @@ function openCampanasHist(autoId, ts){
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeCampanasModal(); });
 document.addEventListener('click', function(e){ if (e.target && e.target.id === 'campModal') closeCampanasModal(); });
 
-async function runNow(clientId, autoId, skipSchedule = false) {
+async function runNow(clientId, autoId, opts = {}) {
+  const skipSchedule = !!opts.skipSlot;
   const btn = document.getElementById('btnSend-'+autoId);
   const bar = document.getElementById('running-'+autoId);
   const res = document.getElementById('result-'+autoId);
@@ -919,7 +971,7 @@ async function runNow(clientId, autoId, skipSchedule = false) {
     const r = await fetch('/api/clients/'+clientId+'/automations/'+autoId+'/rerun', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ skipSchedule }),
+      body: JSON.stringify({ fecha: opts.fecha, skipSlot: opts.skipSlot }),
     });
     const d = await r.json();
     if (d.summary?.status === 'ok') {

@@ -43,8 +43,63 @@ function markSkipToday(autoId) {
   writeSkipState(state);
 }
 
-function shouldSkipToday(autoId) {
-  return readSkipState()[autoId] === todayPeruISO();
+// Salta una ejecución concreta ("YYYY-MM-DD HH:MM", hora Perú), p.ej. la de madrugada del día siguiente.
+function markSkipSlot(autoId, slot) {
+  const state = readSkipState();
+  state[autoId] = slot;
+  writeSkipState(state);
+}
+
+// timeStr: horario del cron que está disparando. Acepta la marca antigua (solo fecha) y la de slot.
+function shouldSkipToday(autoId, timeStr) {
+  const marca = readSkipState()[autoId];
+  const hoy = todayPeruISO();
+  return marca === hoy || (!!timeStr && marca === slotKey(hoy, timeStr));
+}
+
+function slotKey(fecha, timeStr) {
+  const [h, m] = String(timeStr).trim().split(':');
+  return `${fecha} ${h.padStart(2, '0')}:${m}`;
+}
+
+function sumarDias(fechaISO, dias) {
+  const d = new Date(`${fechaISO}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+// Próxima ejecución entre varios horarios "H:MM", estrictamente después de `ahora` ({fecha, h, m}). Pura.
+function proximaEjecucion(times, ahora) {
+  const actual = ahora.h * 60 + ahora.m;
+  let mejor = null;
+  for (const t of times) {
+    if (!parseCron(t)) continue;
+    const [h, m] = t.trim().split(':').map(Number);
+    const min = h * 60 + m;
+    const enMin = min > actual ? min - actual : min - actual + 24 * 60;
+    if (!mejor || enMin < mejor.enMin) {
+      mejor = { enMin, fecha: min > actual ? ahora.fecha : sumarDias(ahora.fecha, 1), hora: slotKey('', t).trim() };
+    }
+  }
+  return mejor && { fecha: mejor.fecha, hora: mejor.hora };
+}
+
+// Fecha (YYYYMMDD) que procesará una corrida programada de wolkvox: antes de mediodía = ayer (tipo 1).
+function fechaProcesaWolkvox({ fecha, hora }) {
+  const f = parseInt(hora, 10) < 12 ? sumarDias(fecha, -1) : fecha;
+  return f.replace(/-/g, '');
+}
+
+function proximaEjecucionDe(autoId) {
+  const auto = Object.values(clients).map(c => c.automations[autoId]).find(Boolean);
+  if (!auto) return null;
+  const env = { ...process.env, ...envLib.read() };
+  const keys = auto.scheduleKeys || (auto.scheduleKey ? [auto.scheduleKey] : []);
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE, hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  }).format(new Date());
+  const [h, m] = p.split(':').map(Number);
+  return proximaEjecucion(keys.map(k => env[k] || ''), { fecha: todayPeruISO(), h, m });
 }
 
 function clearSkip(autoId) {
@@ -202,7 +257,7 @@ function start() {
             console.log(`[scheduler] ${clientId}/${autoId} omitido — bot inactivo`);
             return;
           }
-          if (shouldSkipToday(autoId)) {
+          if (shouldSkipToday(autoId, timeStr)) {
             console.log(`[scheduler] ${clientId}/${autoId} omitido hoy (envío manual ya realizado)`);
             clearSkip(autoId);
             return;
@@ -233,4 +288,7 @@ function status() {
   return activeTasks.map(({ clientId, autoId, time }) => ({ clientId, autoId, time }));
 }
 
-module.exports = { start, stop, status, markSkipToday, shouldSkipToday, clearSkip, msHastaHora };
+module.exports = {
+  start, stop, status, markSkipToday, markSkipSlot, shouldSkipToday, clearSkip, msHastaHora,
+  slotKey, proximaEjecucion, proximaEjecucionDe, fechaProcesaWolkvox,
+};
