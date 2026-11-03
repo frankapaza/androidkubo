@@ -6,8 +6,12 @@ test('CONGESTION se homologa a NO CONTESTA (47)', () => {
   assert.deepStrictEqual(HOMOLOGACION['CONGESTION'], { tipResSi: 47, tipSolSi: 0 });
 });
 
+test('FAILED se homologa a NO CONTESTA (47)', () => {
+  assert.deepStrictEqual(HOMOLOGACION['FAILED'], { tipResSi: 47, tipSolSi: 0 });
+});
+
 test('los no-contactos van a 47 y ANSWER-MACHINE a 46', () => {
-  for (const r of ['NO-ANSWER', 'BUSY', 'ABANDON', 'CONGESTION']) {
+  for (const r of ['NO-ANSWER', 'BUSY', 'ABANDON', 'CONGESTION', 'FAILED']) {
     assert.strictEqual(HOMOLOGACION[r].tipResSi, 47, r);
   }
   assert.strictEqual(HOMOLOGACION['ANSWER-MACHINE'].tipResSi, 46);

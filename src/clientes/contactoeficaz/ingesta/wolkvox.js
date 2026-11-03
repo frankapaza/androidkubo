@@ -57,6 +57,9 @@ const HOMOLOGACION = {
   'BUSY':           { tipResSi: 47, tipSolSi: 0 },
   'NO-ANSWER':      { tipResSi: 47, tipSolSi: 0 },
   'CONGESTION':     { tipResSi: 47, tipSolSi: 0 },   // congestión de red = no-contacto (NO CONTESTA)
+  // Llamada que no salió. Va a NO CONTESTA y no a 49 (FUERA DE SERVICIO) para no invalidar el
+  // teléfono por un fallo pasajero; la observación (desObsVc) conserva "FAILED".
+  'FAILED':         { tipResSi: 47, tipSolSi: 0 },
 };
 
 // ─── API Wolkvox ─────────────────────────────────────────────────────────────

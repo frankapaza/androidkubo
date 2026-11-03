@@ -411,6 +411,7 @@ function renderDashboard(user, client, lastRuns, opts = {}) {
     .srv-tabla{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
     .srv-tabla th,.srv-tabla td{padding:6px 8px;border-bottom:1px solid #f0f0f2;text-align:left}
     .srv-tabla th{color:#71707b;font-weight:600;text-transform:uppercase;letter-spacing:.3px;font-size:11px}
+    .srv-nota{margin-top:8px;padding:8px 10px;background:#f8fafc;border-left:3px solid #94a3b8;border-radius:4px;color:#52525b;font-size:11.5px;line-height:1.5}
     .btn-rerun-srv{margin-left:8px;padding:3px 10px;font-size:11px;border:1px solid #f59e0b;
       background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer}
     .btn-rerun-srv:disabled{opacity:.6;cursor:default}
@@ -1219,9 +1220,19 @@ function renderServidoresTabla(reconciliacion, ctx) {
       <td>${estadoCell} ${detalle} ${boton}</td>
     </tr>`;
   }).join('');
+  // Nota: "Registros" no coincide con el total del reporte de Wolkvox porque solo se ingestan
+  // los resultados homologados (HOMOLOGACION en ingesta/wolkvox.js).
   return `<table class="srv-tabla">
-    <thead><tr><th>Host</th><th>Cliente</th><th>Turno</th><th>Camp. c/data</th><th>Registros</th><th>Estado</th></tr></thead>
-    <tbody>${filas}</tbody></table>`;
+    <thead><tr><th>Host</th><th>Cliente</th><th>Turno</th><th>Camp. c/data</th>
+      <th title="Solo llamadas homologadas (NO-ANSWER, ANSWER-MACHINE, BUSY, ABANDON, CONGESTION, FAILED) entre 07:00 y 20:59">Registros ⓘ</th><th>Estado</th></tr></thead>
+    <tbody>${filas}</tbody></table>
+    <div class="srv-nota">
+      <b>Registros</b> = solo llamadas de no-contacto que se ingestan:
+      <b>NO-ANSWER</b>, <b>ANSWER-MACHINE</b>, <b>BUSY</b>, <b>ABANDON</b>, <b>CONGESTION</b> y <b>FAILED</b>
+      (este último como NO CONTESTA, con observación "FAILED"), entre 07:00 y 20:59.
+      No se ingesta <b>ANSWER</b> (contestadas por asesor), por eso el total
+      puede ser menor al del reporte de Wolkvox (HistCampaign).
+    </div>`;
 }
 
 // Tabla por servidor de IPBusiness con botón "Reintentar" en los que fallaron o vinieron vacíos.
